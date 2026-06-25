@@ -1,0 +1,1269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Ghana Agriculture Stock Control System</title>
+<style>
+  /* ── Reset & Base ─────────────────────────────────────────────── */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --green:     #1a7a3c;
+    --green-d:   #145f2e;
+    --green-l:   #e8f5ee;
+    --gold:      #d4a017;
+    --gold-l:    #fdf6e3;
+    --red:       #c0392b;
+    --red-l:     #fdecea;
+    --orange:    #e67e22;
+    --orange-l:  #fef3e8;
+    --blue:      #2471a3;
+    --blue-l:    #eaf3fb;
+    --gray:      #6c757d;
+    --gray-l:    #f8f9fa;
+    --white:     #ffffff;
+    --border:    #dee2e6;
+    --text:      #212529;
+    --text-m:    #495057;
+    --shadow:    0 2px 12px rgba(0,0,0,.08);
+    --radius:    10px;
+    --sidebar-w: 240px;
+  }
+  body { font-family: 'Segoe UI', system-ui, sans-serif; background: #f0f4f1;
+         color: var(--text); display: flex; min-height: 100vh; }
+
+  /* ── Sidebar ──────────────────────────────────────────────────── */
+  #sidebar {
+    width: var(--sidebar-w); min-height: 100vh; background: var(--green-d);
+    color: #fff; display: flex; flex-direction: column;
+    position: fixed; top: 0; left: 0; z-index: 100;
+  }
+  .sidebar-logo {
+    padding: 22px 18px 16px; border-bottom: 1px solid rgba(255,255,255,.15);
+  }
+  .sidebar-logo h1 { font-size: 1rem; font-weight: 700; line-height: 1.3; }
+  .sidebar-logo span { font-size: .75rem; opacity: .7; }
+  nav { flex: 1; padding: 12px 0; }
+  .nav-section { padding: 8px 18px 4px; font-size: .65rem;
+                 text-transform: uppercase; letter-spacing: .1em;
+                 opacity: .55; font-weight: 600; }
+  .nav-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 18px; cursor: pointer; font-size: .875rem;
+    transition: background .15s; border-left: 3px solid transparent;
+  }
+  .nav-item:hover  { background: rgba(255,255,255,.08); }
+  .nav-item.active { background: rgba(255,255,255,.12);
+                     border-left-color: var(--gold); font-weight: 600; }
+  .nav-item .icon  { font-size: 1rem; width: 20px; text-align: center; }
+  .sidebar-footer  { padding: 14px 18px; font-size: .72rem; opacity: .5;
+                     border-top: 1px solid rgba(255,255,255,.12); }
+
+  /* ── Main content ─────────────────────────────────────────────── */
+  #main { margin-left: var(--sidebar-w); flex: 1; display: flex;
+          flex-direction: column; min-height: 100vh; }
+
+  /* ── Top bar ──────────────────────────────────────────────────── */
+  #topbar {
+    background: var(--white); border-bottom: 1px solid var(--border);
+    padding: 0 28px; height: 56px; display: flex; align-items: center;
+    justify-content: space-between; position: sticky; top: 0; z-index: 50;
+    box-shadow: 0 1px 4px rgba(0,0,0,.06);
+  }
+  #topbar h2 { font-size: 1.05rem; font-weight: 600; color: var(--green-d); }
+  .topbar-right { display: flex; align-items: center; gap: 14px; }
+  .badge-live { background: var(--green); color: #fff; font-size: .7rem;
+                padding: 3px 9px; border-radius: 20px; font-weight: 600; }
+  #api-link { font-size: .78rem; color: var(--green); text-decoration: none;
+              font-weight: 500; border: 1px solid var(--green);
+              padding: 4px 10px; border-radius: 6px; }
+  #api-link:hover { background: var(--green-l); }
+
+  /* ── Page area ────────────────────────────────────────────────── */
+  #content { padding: 24px 28px; flex: 1; }
+  .page { display: none; }
+  .page.active { display: block; }
+  .page-title { font-size: 1.25rem; font-weight: 700; color: var(--green-d);
+                margin-bottom: 20px; display: flex; align-items: center; gap: 8px; }
+
+  /* ── Stat cards ───────────────────────────────────────────────── */
+  .stat-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(180px,1fr));
+               gap: 16px; margin-bottom: 24px; }
+  .stat-card {
+    background: var(--white); border-radius: var(--radius); padding: 18px 20px;
+    box-shadow: var(--shadow); border-left: 4px solid var(--green);
+    display: flex; flex-direction: column; gap: 4px;
+  }
+  .stat-card.gold   { border-left-color: var(--gold); }
+  .stat-card.red    { border-left-color: var(--red); }
+  .stat-card.blue   { border-left-color: var(--blue); }
+  .stat-card.orange { border-left-color: var(--orange); }
+  .stat-label { font-size: .72rem; text-transform: uppercase; letter-spacing: .06em;
+                color: var(--gray); font-weight: 600; }
+  .stat-value { font-size: 1.7rem; font-weight: 700; color: var(--text); line-height: 1.1; }
+  .stat-sub   { font-size: .75rem; color: var(--gray); }
+
+  /* ── Cards & panels ───────────────────────────────────────────── */
+  .card { background: var(--white); border-radius: var(--radius);
+          box-shadow: var(--shadow); margin-bottom: 20px; overflow: hidden; }
+  .card-header { padding: 14px 20px; border-bottom: 1px solid var(--border);
+                 display: flex; align-items: center; justify-content: space-between; }
+  .card-header h3 { font-size: .9rem; font-weight: 600; color: var(--text); }
+  .card-body   { padding: 20px; }
+  .two-col     { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  .three-col   { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; }
+
+  /* ── Tables ───────────────────────────────────────────────────── */
+  .tbl-wrap  { overflow-x: auto; }
+  table      { width: 100%; border-collapse: collapse; font-size: .83rem; }
+  th         { background: var(--gray-l); padding: 9px 12px; text-align: left;
+               font-weight: 600; font-size: .75rem; text-transform: uppercase;
+               letter-spacing: .04em; color: var(--gray); border-bottom: 2px solid var(--border); }
+  td         { padding: 9px 12px; border-bottom: 1px solid var(--border); color: var(--text-m); }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td  { background: var(--gray-l); }
+
+  /* ── Badges ───────────────────────────────────────────────────── */
+  .badge { display: inline-block; padding: 2px 9px; border-radius: 20px;
+           font-size: .7rem; font-weight: 600; }
+  .badge-green   { background: var(--green-l); color: var(--green-d); }
+  .badge-red     { background: var(--red-l);   color: var(--red); }
+  .badge-orange  { background: var(--orange-l);color: var(--orange); }
+  .badge-gold    { background: var(--gold-l);  color: #7d5a00; }
+  .badge-blue    { background: var(--blue-l);  color: var(--blue); }
+  .badge-gray    { background: var(--gray-l);  color: var(--gray); }
+
+  /* ── Progress bars ────────────────────────────────────────────── */
+  .progress-wrap { background: #e9ecef; border-radius: 20px;
+                   height: 8px; overflow: hidden; margin-top: 6px; }
+  .progress-bar  { height: 100%; border-radius: 20px;
+                   background: var(--green); transition: width .5s; }
+  .progress-bar.gold   { background: var(--gold); }
+  .progress-bar.red    { background: var(--red); }
+  .progress-bar.orange { background: var(--orange); }
+
+  /* ── Forms ────────────────────────────────────────────────────── */
+  .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .form-group { display: flex; flex-direction: column; gap: 5px; }
+  .form-group.full { grid-column: 1/-1; }
+  label { font-size: .78rem; font-weight: 600; color: var(--text-m); }
+  input, select, textarea {
+    padding: 8px 11px; border: 1px solid var(--border); border-radius: 6px;
+    font-size: .85rem; font-family: inherit; color: var(--text);
+    transition: border-color .15s; background: #fff;
+  }
+  input:focus, select:focus, textarea:focus {
+    outline: none; border-color: var(--green); box-shadow: 0 0 0 3px rgba(26,122,60,.12);
+  }
+  textarea { resize: vertical; min-height: 70px; }
+
+  /* ── Buttons ──────────────────────────────────────────────────── */
+  .btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 18px;
+         border: none; border-radius: 7px; font-size: .85rem; font-weight: 600;
+         cursor: pointer; font-family: inherit; transition: all .15s; }
+  .btn-primary { background: var(--green); color: #fff; }
+  .btn-primary:hover { background: var(--green-d); }
+  .btn-gold    { background: var(--gold);  color: #fff; }
+  .btn-gold:hover { background: #b8880f; }
+  .btn-red     { background: var(--red);   color: #fff; }
+  .btn-outline { background: transparent; color: var(--green);
+                 border: 1.5px solid var(--green); }
+  .btn-outline:hover { background: var(--green-l); }
+  .btn-sm { padding: 5px 12px; font-size: .78rem; }
+
+  /* ── Alerts ───────────────────────────────────────────────────── */
+  .alert { padding: 11px 16px; border-radius: 8px; font-size: .83rem;
+           margin-bottom: 14px; display: flex; align-items: flex-start; gap: 9px; }
+  .alert-warn  { background: var(--orange-l); color: #7a3d00; border-left: 4px solid var(--orange); }
+  .alert-error { background: var(--red-l);    color: #7a1010; border-left: 4px solid var(--red); }
+  .alert-info  { background: var(--blue-l);   color: #0a3d62; border-left: 4px solid var(--blue); }
+  .alert-ok    { background: var(--green-l);  color: var(--green-d); border-left: 4px solid var(--green); }
+
+  /* ── Upload zone ──────────────────────────────────────────────── */
+  .upload-zone {
+    border: 2px dashed var(--border); border-radius: var(--radius);
+    padding: 36px; text-align: center; cursor: pointer;
+    transition: all .2s; background: var(--gray-l);
+  }
+  .upload-zone:hover, .upload-zone.drag { border-color: var(--green);
+                                          background: var(--green-l); }
+  .upload-zone .uz-icon { font-size: 2.5rem; margin-bottom: 8px; }
+  .upload-zone p { font-size: .85rem; color: var(--gray); margin-bottom: 6px; }
+  .upload-zone strong { color: var(--green); }
+
+  /* ── Loading spinner ──────────────────────────────────────────── */
+  .spinner { width: 22px; height: 22px; border: 3px solid #ddd;
+             border-top-color: var(--green); border-radius: 50%;
+             animation: spin .7s linear infinite; display: inline-block; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .loading-row { display: flex; align-items: center; gap: 10px;
+                 padding: 20px; color: var(--gray); font-size: .85rem; }
+
+  /* ── Health donut ─────────────────────────────────────────────── */
+  .health-ring { position: relative; width: 120px; height: 120px; margin: 0 auto 12px; }
+  .health-ring svg { transform: rotate(-90deg); }
+  .health-pct { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
+                font-size: 1.4rem; font-weight: 700; color: var(--green-d); }
+
+  /* ── Misc ─────────────────────────────────────────────────────── */
+  .empty { text-align: center; padding: 36px; color: var(--gray); font-size: .88rem; }
+  .section-sep { height: 1px; background: var(--border); margin: 20px 0; }
+  .tag-list { display: flex; flex-wrap: wrap; gap: 6px; }
+  .forecast-bar { display: flex; flex-direction: column; gap: 10px; }
+  .f-row { display: flex; align-items: center; gap: 12px; font-size: .82rem; }
+  .f-label { width: 80px; font-weight: 600; color: var(--text-m); }
+  .f-bar-wrap { flex: 1; background: #e9ecef; border-radius: 20px; height: 14px; overflow: hidden; }
+  .f-bar { height: 100%; border-radius: 20px; background: var(--green); }
+  .f-val { width: 90px; text-align: right; color: var(--gray); }
+  .scrollable { max-height: 340px; overflow-y: auto; }
+
+  @media (max-width: 768px) {
+    #sidebar { width: 60px; }
+    #sidebar .nav-item span, #sidebar .sidebar-logo h1,
+    #sidebar .sidebar-logo span, #sidebar .nav-section,
+    #sidebar .sidebar-footer { display: none; }
+    #main { margin-left: 60px; }
+    .two-col, .three-col, .form-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ════════════════════════════════ SIDEBAR ════════════════════════════════ -->
+<aside id="sidebar">
+  <div class="sidebar-logo">
+    <h1>🌾 Ghana AgriStock</h1>
+    <span>Management System v3.0</span>
+  </div>
+  <nav>
+    <div class="nav-section">Overview</div>
+    <div class="nav-item active" onclick="showPage('dashboard')">
+      <span class="icon">🏠</span><span>Dashboard</span>
+    </div>
+
+    <div class="nav-section">Inventory</div>
+    <div class="nav-item" onclick="showPage('inventory')">
+      <span class="icon">📦</span><span>Stock Inventory</span>
+    </div>
+    <div class="nav-item" onclick="showPage('movements')">
+      <span class="icon">🔄</span><span>Stock Movements</span>
+    </div>
+    <div class="nav-item" onclick="showPage('forecast')">
+      <span class="icon">📈</span><span>Forecast</span>
+    </div>
+    <div class="nav-item" onclick="showPage('alerts')">
+      <span class="icon">🔔</span><span>Alerts</span>
+    </div>
+
+    <div class="nav-section">Entities</div>
+    <div class="nav-item" onclick="showPage('farmers')">
+      <span class="icon">👨‍🌾</span><span>Farmers</span>
+    </div>
+    <div class="nav-item" onclick="showPage('products')">
+      <span class="icon">🌽</span><span>Products</span>
+    </div>
+    <div class="nav-item" onclick="showPage('warehouses')">
+      <span class="icon">🏭</span><span>Warehouses</span>
+    </div>
+
+    <div class="nav-section">Quality & Data</div>
+    <div class="nav-item" onclick="showPage('quality')">
+      <span class="icon">🔬</span><span>Quality Assessment</span>
+    </div>
+    <div class="nav-item" onclick="showPage('integration')">
+      <span class="icon">🤖</span><span>Data Integration AI</span>
+    </div>
+    <div class="nav-item" onclick="showPage('reports')">
+      <span class="icon">📊</span><span>Reports</span>
+    </div>
+  </nav>
+  <div class="sidebar-footer">Ghana Agricultural Management System</div>
+</aside>
+
+<!-- ════════════════════════════════ MAIN ════════════════════════════════════ -->
+<div id="main">
+  <div id="topbar">
+    <h2 id="page-title">Dashboard</h2>
+    <div class="topbar-right">
+      <span class="badge-live">● LIVE</span>
+      <a id="api-link" href="/docs" target="_blank">API Docs ↗</a>
+    </div>
+  </div>
+
+  <div id="content">
+
+    <!-- ── DASHBOARD ──────────────────────────────────────────────── -->
+    <div id="page-dashboard" class="page active">
+      <div class="stat-grid" id="dash-stats">
+        <div class="loading-row"><div class="spinner"></div> Loading stats…</div>
+      </div>
+      <div class="two-col">
+        <div class="card">
+          <div class="card-header"><h3>📦 Focus Crop Stock Levels</h3></div>
+          <div class="card-body" id="dash-crops"></div>
+        </div>
+        <div class="card">
+          <div class="card-header"><h3>🏥 Inventory Health</h3></div>
+          <div class="card-body" id="dash-health" style="text-align:center"></div>
+        </div>
+      </div>
+      <div class="two-col">
+        <div class="card">
+          <div class="card-header"><h3>🔔 Active Alerts</h3></div>
+          <div class="card-body scrollable" id="dash-alerts"></div>
+        </div>
+        <div class="card">
+          <div class="card-header"><h3>✅ Recommended Actions</h3></div>
+          <div class="card-body scrollable" id="dash-actions"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── INVENTORY ──────────────────────────────────────────────── -->
+    <div id="page-inventory" class="page">
+      <div class="card">
+        <div class="card-header">
+          <h3>📦 Current Stock Inventory</h3>
+          <div style="display:flex;gap:8px">
+            <select id="inv-cat-filter" onchange="loadInventory()" style="font-size:.8rem;padding:4px 8px">
+              <option value="">All Categories</option>
+              <option>Grains</option><option>Roots & Tubers</option>
+              <option>Vegetables</option><option>Fruits</option>
+              <option>Livestock</option><option>Poultry</option><option>Fish</option>
+            </select>
+            <button class="btn btn-outline btn-sm" onclick="loadInventory()">↻ Refresh</button>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="tbl-wrap"><table>
+            <thead><tr>
+              <th>Product</th><th>Category</th><th>Current Stock</th>
+              <th>Available</th><th>Turnover Rate</th><th>Reorder Level</th><th>Status</th>
+            </tr></thead>
+            <tbody id="inv-table"></tbody>
+          </table></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── STOCK MOVEMENTS ─────────────────────────────────────────── -->
+    <div id="page-movements" class="page">
+      <div class="two-col">
+        <div class="card">
+          <div class="card-header"><h3>➕ Record Stock Movement</h3></div>
+          <div class="card-body">
+            <div class="form-grid">
+              <div class="form-group">
+                <label>Movement Type</label>
+                <select id="mv-type">
+                  <option value="in">Stock IN (Harvest / Purchase)</option>
+                  <option value="out">Stock OUT (Sale / Dispatch)</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>Farmer ID</label>
+                <input type="number" id="mv-farmer" placeholder="e.g. 5" min="1"/>
+              </div>
+              <div class="form-group">
+                <label>Product ID</label>
+                <input type="number" id="mv-product" placeholder="e.g. 8" min="1"/>
+              </div>
+              <div class="form-group">
+                <label>Quantity</label>
+                <input type="number" id="mv-qty" placeholder="e.g. 500" min="0.01" step="0.01"/>
+              </div>
+              <div class="form-group">
+                <label>Unit</label>
+                <select id="mv-unit">
+                  <option>kg</option><option>ton</option><option>bag</option>
+                  <option>crate</option><option>piece</option><option>liter</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>Warehouse ID (optional)</label>
+                <input type="number" id="mv-wh" placeholder="Leave blank if none"/>
+              </div>
+              <div class="form-group full">
+                <label>Reference Note</label>
+                <input type="text" id="mv-note" placeholder="e.g. Harvest batch #42"/>
+              </div>
+            </div>
+            <div style="margin-top:16px">
+              <button class="btn btn-primary" onclick="recordMovement()">✓ Record Movement</button>
+            </div>
+            <div id="mv-result" style="margin-top:12px"></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header">
+            <h3>📋 Transaction History</h3>
+            <button class="btn btn-outline btn-sm" onclick="loadTransactions()">↻ Refresh</button>
+          </div>
+          <div class="card-body">
+            <div class="tbl-wrap scrollable"><table>
+              <thead><tr>
+                <th>ID</th><th>Type</th><th>Product</th><th>Qty</th><th>Date</th>
+              </tr></thead>
+              <tbody id="tx-table"></tbody>
+            </table></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── FORECAST ────────────────────────────────────────────────── -->
+    <div id="page-forecast" class="page">
+      <div class="card">
+        <div class="card-header">
+          <h3>📈 3-Month Demand Forecast</h3>
+          <div style="display:flex;gap:8px;align-items:center">
+            <label style="font-size:.82rem;font-weight:600">Product ID:</label>
+            <input type="number" id="fc-pid" value="10" min="1" style="width:70px;padding:5px 8px"/>
+            <button class="btn btn-primary btn-sm" onclick="loadForecast()">Generate</button>
+          </div>
+        </div>
+        <div class="card-body" id="forecast-body"></div>
+      </div>
+    </div>
+
+    <!-- ── ALERTS ──────────────────────────────────────────────────── -->
+    <div id="page-alerts" class="page">
+      <div class="card">
+        <div class="card-header">
+          <h3>🔔 Active Stock Alerts</h3>
+          <button class="btn btn-outline btn-sm" onclick="loadAlerts()">↻ Refresh</button>
+        </div>
+        <div class="card-body">
+          <div class="tbl-wrap"><table>
+            <thead><tr>
+              <th>ID</th><th>Type</th><th>Message</th><th>Resolved</th><th>Created</th>
+            </tr></thead>
+            <tbody id="alerts-table"></tbody>
+          </table></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header"><h3>⚠️ Low-Stock Items</h3></div>
+        <div class="card-body">
+          <div class="tbl-wrap"><table>
+            <thead><tr>
+              <th>Farmer</th><th>Product</th><th>Warehouse</th>
+              <th>Current Stock</th><th>Reorder Level</th><th>Status</th>
+            </tr></thead>
+            <tbody id="lowstock-table"></tbody>
+          </table></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── FARMERS ─────────────────────────────────────────────────── -->
+    <div id="page-farmers" class="page">
+      <div class="two-col">
+        <div class="card">
+          <div class="card-header">
+            <h3>👨‍🌾 Registered Farmers</h3>
+            <button class="btn btn-outline btn-sm" onclick="loadFarmers()">↻ Refresh</button>
+          </div>
+          <div class="card-body">
+            <div class="tbl-wrap scrollable"><table>
+              <thead><tr>
+                <th>ID</th><th>Name</th><th>Region</th><th>District</th><th>Farm</th>
+              </tr></thead>
+              <tbody id="farmers-table"></tbody>
+            </table></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header"><h3>➕ Register New Farmer</h3></div>
+          <div class="card-body">
+            <div class="form-grid">
+              <div class="form-group full">
+                <label>Full Name *</label>
+                <input type="text" id="fn-name" placeholder="e.g. Kwame Asante"/>
+              </div>
+              <div class="form-group">
+                <label>Phone</label>
+                <input type="text" id="fn-phone" placeholder="+233…"/>
+              </div>
+              <div class="form-group">
+                <label>Region</label>
+                <input type="text" id="fn-region" placeholder="e.g. Ashanti"/>
+              </div>
+              <div class="form-group">
+                <label>District</label>
+                <input type="text" id="fn-district" placeholder="e.g. Ejura"/>
+              </div>
+              <div class="form-group">
+                <label>Farm Name</label>
+                <input type="text" id="fn-farm" placeholder="e.g. Asante Farms"/>
+              </div>
+            </div>
+            <div style="margin-top:16px">
+              <button class="btn btn-primary" onclick="registerFarmer()">✓ Register Farmer</button>
+            </div>
+            <div id="fn-result" style="margin-top:12px"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── PRODUCTS ────────────────────────────────────────────────── -->
+    <div id="page-products" class="page">
+      <div class="two-col">
+        <div class="card">
+          <div class="card-header">
+            <h3>🌽 Products Catalogue</h3>
+            <button class="btn btn-outline btn-sm" onclick="loadProducts()">↻ Refresh</button>
+          </div>
+          <div class="card-body">
+            <div class="tbl-wrap"><table>
+              <thead><tr>
+                <th>ID</th><th>Product</th><th>Category</th><th>Unit</th><th>Description</th>
+              </tr></thead>
+              <tbody id="products-table"></tbody>
+            </table></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header"><h3>➕ Register New Product</h3></div>
+          <div class="card-body">
+            <div class="form-grid">
+              <div class="form-group full">
+                <label>Product Name *</label>
+                <input type="text" id="pr-name" placeholder="e.g. Cassava"/>
+              </div>
+              <div class="form-group">
+                <label>Category</label>
+                <select id="pr-cat">
+                  <option>Grains</option><option>Roots & Tubers</option>
+                  <option>Vegetables</option><option>Fruits</option>
+                  <option>Livestock</option><option>Poultry</option>
+                  <option>Fish</option><option>Cash Crops</option><option>Other</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>Base Unit *</label>
+                <select id="pr-unit">
+                  <option>kg</option><option>ton</option><option>bag</option>
+                  <option>crate</option><option>piece</option><option>liter</option>
+                </select>
+              </div>
+              <div class="form-group full">
+                <label>Description</label>
+                <textarea id="pr-desc" placeholder="Optional description…"></textarea>
+              </div>
+            </div>
+            <div style="margin-top:16px">
+              <button class="btn btn-primary" onclick="registerProduct()">✓ Register Product</button>
+            </div>
+            <div id="pr-result" style="margin-top:12px"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── WAREHOUSES ──────────────────────────────────────────────── -->
+    <div id="page-warehouses" class="page">
+      <div class="two-col">
+        <div class="card">
+          <div class="card-header">
+            <h3>🏭 Warehouses & Storage</h3>
+            <button class="btn btn-outline btn-sm" onclick="loadWarehouses()">↻ Refresh</button>
+          </div>
+          <div class="card-body">
+            <div class="tbl-wrap"><table>
+              <thead><tr>
+                <th>ID</th><th>Name</th><th>Region</th><th>District</th><th>Capacity</th>
+              </tr></thead>
+              <tbody id="wh-table"></tbody>
+            </table></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header"><h3>➕ Register New Warehouse</h3></div>
+          <div class="card-body">
+            <div class="form-grid">
+              <div class="form-group full">
+                <label>Warehouse Name *</label>
+                <input type="text" id="wh-name" placeholder="e.g. Tamale North Silo"/>
+              </div>
+              <div class="form-group">
+                <label>Region</label>
+                <input type="text" id="wh-region" placeholder="e.g. Northern"/>
+              </div>
+              <div class="form-group">
+                <label>District</label>
+                <input type="text" id="wh-district" placeholder="e.g. Tamale Metro"/>
+              </div>
+              <div class="form-group">
+                <label>Capacity (base units)</label>
+                <input type="number" id="wh-cap" placeholder="e.g. 50000"/>
+              </div>
+            </div>
+            <div style="margin-top:16px">
+              <button class="btn btn-primary" onclick="registerWarehouse()">✓ Register Warehouse</button>
+            </div>
+            <div id="wh-result" style="margin-top:12px"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── QUALITY ASSESSMENT ──────────────────────────────────────── -->
+    <div id="page-quality" class="page">
+      <div class="card" style="margin-bottom:20px">
+        <div class="card-header">
+          <h3>🔬 Quality Assessment Summary</h3>
+          <button class="btn btn-outline btn-sm" onclick="loadQuality()">↻ Refresh</button>
+        </div>
+        <div class="card-body">
+          <div class="tbl-wrap"><table>
+            <thead><tr>
+              <th>ID</th><th>Product</th><th>Category</th><th>Batch</th>
+              <th>Score</th><th>Grade</th><th>Risk</th><th>Recommendation</th><th>Date</th>
+            </tr></thead>
+            <tbody id="qa-table"></tbody>
+          </table></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header"><h3>📊 Quality Summary by Product</h3></div>
+        <div class="card-body" id="qa-summary"></div>
+      </div>
+    </div>
+
+    <!-- ── DATA INTEGRATION AI ─────────────────────────────────────── -->
+    <div id="page-integration" class="page">
+      <div class="two-col">
+        <div class="card">
+          <div class="card-header"><h3>📂 Upload Dataset for AI Processing</h3></div>
+          <div class="card-body">
+            <div class="upload-zone" id="upload-zone"
+                 ondragover="event.preventDefault();this.classList.add('drag')"
+                 ondragleave="this.classList.remove('drag')"
+                 ondrop="handleDrop(event)"
+                 onclick="document.getElementById('file-input').click()">
+              <div class="uz-icon">📤</div>
+              <p>Drag & drop a file here or <strong>click to browse</strong></p>
+              <p style="font-size:.75rem">Supports CSV · Excel · JSON</p>
+            </div>
+            <input type="file" id="file-input" style="display:none"
+                   accept=".csv,.xlsx,.xls,.json" onchange="uploadFile(event)"/>
+            <div id="upload-result" style="margin-top:14px"></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header">
+            <h3>📋 Import Sessions</h3>
+            <button class="btn btn-outline btn-sm" onclick="loadSessions()">↻ Refresh</button>
+          </div>
+          <div class="card-body">
+            <div class="tbl-wrap scrollable"><table>
+              <thead><tr>
+                <th>ID</th><th>File</th><th>Schema</th><th>Status</th><th>Txs</th><th>Started</th>
+              </tr></thead>
+              <tbody id="sessions-table"></tbody>
+            </table></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── REPORTS ─────────────────────────────────────────────────── -->
+    <div id="page-reports" class="page">
+      <div class="stat-grid" id="report-stats"></div>
+      <div class="three-col" id="report-grid"></div>
+      <div class="card">
+        <div class="card-header">
+          <h3>📊 Recommended Actions</h3>
+          <button class="btn btn-outline btn-sm" onclick="loadReports()">↻ Refresh</button>
+        </div>
+        <div class="card-body" id="report-actions"></div>
+      </div>
+    </div>
+
+  </div><!-- /content -->
+</div><!-- /main -->
+
+<script>
+const API = '';   // same origin
+
+// ── Navigation ───────────────────────────────────────────────────────────────
+const PAGE_TITLES = {
+  dashboard:'Dashboard', inventory:'Stock Inventory', movements:'Stock Movements',
+  forecast:'Forecast', alerts:'Alerts', farmers:'Farmers',
+  products:'Products', warehouses:'Warehouses',
+  quality:'Quality Assessment', integration:'Data Integration AI', reports:'Reports'
+};
+function showPage(id) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById('page-' + id).classList.add('active');
+  document.querySelectorAll('.nav-item').forEach(n => {
+    if (n.getAttribute('onclick') === `showPage('${id}')`) n.classList.add('active');
+  });
+  document.getElementById('page-title').textContent = PAGE_TITLES[id] || id;
+  pageLoaders[id] && pageLoaders[id]();
+}
+
+// ── Fetch helper ─────────────────────────────────────────────────────────────
+async function api(path, opts={}) {
+  const r = await fetch(API + path, opts);
+  if (!r.ok) { const e = await r.json().catch(()=>({detail:r.statusText})); throw e; }
+  return r.json();
+}
+
+// ── Formatters ────────────────────────────────────────────────────────────────
+const fmt = n => n == null ? '—' : Number(n).toLocaleString(undefined, {maximumFractionDigits:1});
+const fmtDate = d => d ? new Date(d).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}) : '—';
+
+function statusBadge(s) {
+  const map = {
+    HEALTHY:'badge-green', LOW_STOCK:'badge-orange',
+    CRITICAL:'badge-red', OUT_OF_STOCK:'badge-red',
+    Buy:'badge-green','Buy with Caution':'badge-gold','Do Not Buy':'badge-red',
+    Premium:'badge-green','Grade A':'badge-blue','Grade B':'badge-gold',
+    'Grade C':'badge-orange',Reject:'badge-red',
+    Low:'badge-green',Medium:'badge-gold',High:'badge-red',
+    SUCCESS:'badge-green',PARTIAL:'badge-gold',FAILED:'badge-red',PENDING:'badge-gray',
+  };
+  return `<span class="badge ${map[s]||'badge-gray'}">${s||'—'}</span>`;
+}
+
+function showAlert(el, msg, type='info') {
+  const icons = {ok:'✅',warn:'⚠️',error:'❌',info:'ℹ️'};
+  document.getElementById(el).innerHTML =
+    `<div class="alert alert-${type}">${icons[type]||'ℹ️'} ${msg}</div>`;
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  DASHBOARD
+// ══════════════════════════════════════════════════════════════════════════════
+async function loadDashboard() {
+  try {
+    const [health, inv, alerts, rpts] = await Promise.all([
+      api('/integration/health'),
+      api('/integration/inventory'),
+      api('/stock/alerts'),
+      api('/integration/reports/standalone'),
+    ]);
+
+    // Stat cards
+    document.getElementById('dash-stats').innerHTML = `
+      <div class="stat-card">
+        <div class="stat-label">Total Products</div>
+        <div class="stat-value">${health.total_products}</div>
+        <div class="stat-sub">Registered in system</div>
+      </div>
+      <div class="stat-card gold">
+        <div class="stat-label">Healthy Stock</div>
+        <div class="stat-value">${health.healthy}</div>
+        <div class="stat-sub">${health.overall_health_pct}% health rate</div>
+      </div>
+      <div class="stat-card orange">
+        <div class="stat-label">Low Stock</div>
+        <div class="stat-value">${health.low_stock + health.critical}</div>
+        <div class="stat-sub">Need attention</div>
+      </div>
+      <div class="stat-card red">
+        <div class="stat-label">Out of Stock</div>
+        <div class="stat-value">${health.out_of_stock}</div>
+        <div class="stat-sub">Immediate reorder needed</div>
+      </div>
+      <div class="stat-card blue">
+        <div class="stat-label">Active Alerts</div>
+        <div class="stat-value">${alerts.length}</div>
+        <div class="stat-sub">Unresolved issues</div>
+      </div>
+    `;
+
+    // Focus crops bar chart
+    const focusCrops = ['Tomato','Yam','Maize','Rice'];
+    const cropData = inv.filter(i => focusCrops.includes(i.product_name));
+    const maxStock = Math.max(...cropData.map(c => c.total_current_stock), 1);
+    document.getElementById('dash-crops').innerHTML = `
+      <div class="forecast-bar">
+        ${cropData.map(c => {
+          const pct = Math.min((c.total_current_stock / maxStock) * 100, 100);
+          const col = c.status==='HEALTHY'?'':'orange';
+          return `<div class="f-row">
+            <div class="f-label">${c.product_name}</div>
+            <div class="f-bar-wrap"><div class="f-bar ${col}" style="width:${pct}%"></div></div>
+            <div class="f-val">${fmt(c.total_current_stock)} ${c.unit}</div>
+          </div>`;
+        }).join('')}
+      </div>
+    `;
+
+    // Health donut
+    const pct = health.overall_health_pct;
+    const r = 50, circ = 2*Math.PI*r;
+    const dash = (pct/100)*circ;
+    const col = pct>=70?'#1a7a3c':pct>=40?'#e67e22':'#c0392b';
+    document.getElementById('dash-health').innerHTML = `
+      <div class="health-ring">
+        <svg width="120" height="120" viewBox="0 0 120 120">
+          <circle cx="60" cy="60" r="${r}" fill="none" stroke="#e9ecef" stroke-width="12"/>
+          <circle cx="60" cy="60" r="${r}" fill="none" stroke="${col}" stroke-width="12"
+            stroke-dasharray="${dash} ${circ}" stroke-linecap="round"/>
+        </svg>
+        <div class="health-pct">${pct}%</div>
+      </div>
+      <div style="font-size:.82rem;color:var(--gray-text)">Overall Inventory Health</div>
+      <div style="margin-top:12px;display:flex;flex-wrap:wrap;gap:8px;justify-content:center">
+        <span class="badge badge-green">Healthy: ${health.healthy}</span>
+        <span class="badge badge-orange">Low: ${health.low_stock}</span>
+        <span class="badge badge-red">Critical: ${health.critical}</span>
+        <span class="badge badge-red">OOS: ${health.out_of_stock}</span>
+      </div>
+    `;
+
+    // Alerts
+    const alertsEl = document.getElementById('dash-alerts');
+    if (!alerts.length) {
+      alertsEl.innerHTML = '<div class="empty">✅ No active alerts</div>';
+    } else {
+      alertsEl.innerHTML = alerts.slice(0,6).map(a => `
+        <div class="alert alert-${a.alert_type==='LOW_STOCK'?'warn':'error'}">
+          <strong>${a.alert_type}</strong> — ${a.alert_message.substring(0,120)}…
+        </div>`).join('');
+    }
+
+    // Actions
+    const actions = rpts.recommended_actions || [];
+    const actEl = document.getElementById('dash-actions');
+    if (!actions.length) {
+      actEl.innerHTML = '<div class="empty">All systems normal.</div>';
+    } else {
+      actEl.innerHTML = actions.slice(0,6).map(a => {
+        const cls = a.startsWith('URGENT')?'error':a.startsWith('CRITICAL')?'error':
+                    a.startsWith('LOW')?'warn':'info';
+        return `<div class="alert alert-${cls}">${a}</div>`;
+      }).join('');
+    }
+  } catch(e) {
+    document.getElementById('dash-stats').innerHTML =
+      `<div class="alert alert-error">❌ Failed to load dashboard: ${e.detail||e}</div>`;
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  INVENTORY
+// ══════════════════════════════════════════════════════════════════════════════
+async function loadInventory() {
+  const cat = document.getElementById('inv-cat-filter')?.value || '';
+  const url = '/integration/inventory' + (cat ? `?category=${encodeURIComponent(cat)}` : '');
+  const tb = document.getElementById('inv-table');
+  tb.innerHTML = '<tr><td colspan="7"><div class="loading-row"><div class="spinner"></div> Loading…</div></td></tr>';
+  try {
+    const data = await api(url);
+    tb.innerHTML = data.map(r => `<tr>
+      <td><strong>${r.product_name}</strong></td>
+      <td><span class="badge badge-blue">${r.category}</span></td>
+      <td>${fmt(r.total_current_stock)} ${r.unit}</td>
+      <td>${fmt(r.available_stock)} ${r.unit}</td>
+      <td>${r.stock_turnover_rate?.toFixed(4) || '0.0000'}</td>
+      <td>${fmt(r.reorder_level)} ${r.unit}</td>
+      <td>${statusBadge(r.status)}</td>
+    </tr>`).join('') || '<tr><td colspan="7" class="empty">No data</td></tr>';
+  } catch(e) {
+    tb.innerHTML = `<tr><td colspan="7"><div class="alert alert-error">Error: ${e.detail||e}</div></td></tr>`;
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  STOCK MOVEMENTS
+// ══════════════════════════════════════════════════════════════════════════════
+async function recordMovement() {
+  const type = document.getElementById('mv-type').value;
+  const body = {
+    farmer_id:  parseInt(document.getElementById('mv-farmer').value),
+    product_id: parseInt(document.getElementById('mv-product').value),
+    quantity:   parseFloat(document.getElementById('mv-qty').value),
+    unit:       document.getElementById('mv-unit').value,
+    warehouse_id: document.getElementById('mv-wh').value ? parseInt(document.getElementById('mv-wh').value) : null,
+    reference_note: document.getElementById('mv-note').value || null,
+  };
+  try {
+    const res = await api(`/stock/${type}`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(body)
+    });
+    showAlert('mv-result', `Transaction #${res.transaction_id} recorded successfully.`, 'ok');
+    loadTransactions();
+  } catch(e) {
+    showAlert('mv-result', `Error: ${e.detail||JSON.stringify(e)}`, 'error');
+  }
+}
+
+async function loadTransactions() {
+  const tb = document.getElementById('tx-table');
+  try {
+    const data = await api('/stock/transactions?limit=50');
+    tb.innerHTML = data.map(r => `<tr>
+      <td>${r.transaction_id}</td>
+      <td>${statusBadge(r.transaction_type)}</td>
+      <td>Product #${r.product_id}</td>
+      <td>${fmt(r.quantity)} ${r.unit}</td>
+      <td>${fmtDate(r.transaction_date)}</td>
+    </tr>`).join('') || '<tr><td colspan="5" class="empty">No transactions</td></tr>';
+  } catch(e) { tb.innerHTML = `<tr><td colspan="5">Error</td></tr>`; }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  FORECAST
+// ══════════════════════════════════════════════════════════════════════════════
+async function loadForecast() {
+  const pid = document.getElementById('fc-pid').value || 10;
+  const el = document.getElementById('forecast-body');
+  el.innerHTML = '<div class="loading-row"><div class="spinner"></div> Generating forecast…</div>';
+  try {
+    const d = await api(`/stock/forecast/${pid}`);
+    const proj = d.forecast_next_3_months || [];
+    const wl = d.warning_level;
+    const wlCls = wl==='HEALTHY'?'ok':wl==='WARNING'?'warn':'error';
+    el.innerHTML = `
+      <div class="stat-grid" style="margin-bottom:18px">
+        <div class="stat-card"><div class="stat-label">Product</div>
+          <div class="stat-value" style="font-size:1.2rem">${d.product_name}</div>
+          <div class="stat-sub">Unit: ${d.unit}</div></div>
+        <div class="stat-card gold"><div class="stat-label">Current Stock</div>
+          <div class="stat-value">${fmt(d.total_current_stock)}</div>
+          <div class="stat-sub">${d.unit}</div></div>
+        <div class="stat-card blue"><div class="stat-label">Days of Coverage</div>
+          <div class="stat-value">${d.days_of_coverage >= 999 ? '∞' : fmt(d.days_of_coverage)}</div>
+          <div class="stat-sub">at current rate</div></div>
+        <div class="stat-card ${wl==='HEALTHY'?'':'red'}">
+          <div class="stat-label">Warning Level</div>
+          <div class="stat-value" style="font-size:1.1rem">${wl}</div>
+          <div class="stat-sub">${d.reorder_threshold ? 'Reorder at '+fmt(d.reorder_threshold) : ''}</div>
+        </div>
+      </div>
+      <div class="alert alert-${wlCls}" style="margin-bottom:16px">${d.recommendation}</div>
+      <h4 style="font-size:.85rem;font-weight:700;margin-bottom:10px;color:var(--text-m)">3-MONTH PROJECTION</h4>
+      <div class="forecast-bar">
+        ${proj.map((p,i) => {
+          const pct = Math.min((p.projected_stock / Math.max(d.total_current_stock,1)) * 100, 100);
+          return `<div class="f-row">
+            <div class="f-label">Month ${p.month_index}</div>
+            <div class="f-bar-wrap"><div class="f-bar" style="width:${pct}%;background:${pct<30?'#c0392b':pct<60?'#e67e22':'#1a7a3c'}"></div></div>
+            <div class="f-val">${fmt(p.projected_stock)} ${d.unit}</div>
+          </div>`;
+        }).join('')}
+      </div>
+      <div style="margin-top:16px;font-size:.78rem;color:var(--gray)">
+        Avg Monthly Inflow: ${fmt(d.historical_metrics?.average_monthly_inflow)} ${d.unit} &nbsp;|&nbsp;
+        Avg Monthly Outflow: ${fmt(d.historical_metrics?.average_monthly_outflow)} ${d.unit}
+      </div>
+    `;
+  } catch(e) {
+    el.innerHTML = `<div class="alert alert-error">❌ ${e.detail||e}</div>`;
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  ALERTS
+// ══════════════════════════════════════════════════════════════════════════════
+async function loadAlerts() {
+  const tb  = document.getElementById('alerts-table');
+  const tb2 = document.getElementById('lowstock-table');
+  try {
+    const [alerts, lowstock] = await Promise.all([
+      api('/stock/alerts'), api('/stock/low-stock')
+    ]);
+    tb.innerHTML = alerts.map(a => `<tr>
+      <td>${a.alert_id}</td>
+      <td>${statusBadge(a.alert_type)}</td>
+      <td style="max-width:320px;word-break:break-word">${a.alert_message}</td>
+      <td>${a.is_resolved ? '✅ Yes' : '❌ No'}</td>
+      <td>${fmtDate(a.created_at)}</td>
+    </tr>`).join('') || '<tr><td colspan="5" class="empty">No active alerts</td></tr>';
+    tb2.innerHTML = lowstock.map(l => `<tr>
+      <td>${l.farmer_name}</td>
+      <td>${l.product_name}</td>
+      <td>${l.warehouse_name||'—'}</td>
+      <td>${fmt(l.current_stock)} ${l.unit}</td>
+      <td>${fmt(l.reorder_level)} ${l.unit}</td>
+      <td>${statusBadge(l.status)}</td>
+    </tr>`).join('') || '<tr><td colspan="6" class="empty">No low-stock items</td></tr>';
+  } catch(e) { console.error(e); }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  FARMERS / PRODUCTS / WAREHOUSES
+// ══════════════════════════════════════════════════════════════════════════════
+async function loadFarmers() {
+  const tb = document.getElementById('farmers-table');
+  const data = await api('/stock/farmers?limit=100');
+  tb.innerHTML = data.map(f => `<tr>
+    <td>${f.farmer_id}</td><td><strong>${f.full_name}</strong></td>
+    <td>${f.region||'—'}</td><td>${f.district||'—'}</td><td>${f.farm_name||'—'}</td>
+  </tr>`).join('') || '<tr><td colspan="5" class="empty">None</td></tr>';
+}
+
+async function registerFarmer() {
+  const body = {
+    full_name: document.getElementById('fn-name').value,
+    phone_number: document.getElementById('fn-phone').value||null,
+    region: document.getElementById('fn-region').value||null,
+    district: document.getElementById('fn-district').value||null,
+    farm_name: document.getElementById('fn-farm').value||null,
+  };
+  if (!body.full_name) { showAlert('fn-result','Full name is required.','warn'); return; }
+  try {
+    const r = await api('/stock/farmers',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    showAlert('fn-result',`Farmer "${r.full_name}" registered with ID ${r.farmer_id}.`,'ok');
+    loadFarmers();
+  } catch(e) { showAlert('fn-result',`Error: ${e.detail||e}`,'error'); }
+}
+
+async function loadProducts() {
+  const tb = document.getElementById('products-table');
+  const data = await api('/stock/products?limit=100');
+  tb.innerHTML = data.map(p => `<tr>
+    <td>${p.product_id}</td><td><strong>${p.product_name}</strong></td>
+    <td><span class="badge badge-blue">${p.category||'—'}</span></td>
+    <td>${p.unit}</td><td style="max-width:200px">${p.description||'—'}</td>
+  </tr>`).join('') || '<tr><td colspan="5" class="empty">None</td></tr>';
+}
+
+async function registerProduct() {
+  const body = {
+    product_name: document.getElementById('pr-name').value,
+    category: document.getElementById('pr-cat').value,
+    unit: document.getElementById('pr-unit').value,
+    description: document.getElementById('pr-desc').value||null,
+  };
+  if (!body.product_name) { showAlert('pr-result','Product name required.','warn'); return; }
+  try {
+    const r = await api('/stock/products',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    showAlert('pr-result',`Product "${r.product_name}" registered (ID ${r.product_id}).`,'ok');
+    loadProducts();
+  } catch(e) { showAlert('pr-result',`Error: ${e.detail||e}`,'error'); }
+}
+
+async function loadWarehouses() {
+  const tb = document.getElementById('wh-table');
+  const data = await api('/stock/warehouses');
+  tb.innerHTML = data.map(w => `<tr>
+    <td>${w.warehouse_id}</td><td><strong>${w.warehouse_name}</strong></td>
+    <td>${w.region||'—'}</td><td>${w.district||'—'}</td>
+    <td>${w.capacity ? fmt(w.capacity) : '—'}</td>
+  </tr>`).join('') || '<tr><td colspan="5" class="empty">None</td></tr>';
+}
+
+async function registerWarehouse() {
+  const body = {
+    warehouse_name: document.getElementById('wh-name').value,
+    region: document.getElementById('wh-region').value||null,
+    district: document.getElementById('wh-district').value||null,
+    capacity: document.getElementById('wh-cap').value ? parseFloat(document.getElementById('wh-cap').value) : null,
+  };
+  if (!body.warehouse_name) { showAlert('wh-result','Warehouse name required.','warn'); return; }
+  try {
+    const r = await api('/stock/warehouses',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    showAlert('wh-result',`Warehouse "${r.warehouse_name}" registered (ID ${r.warehouse_id}).`,'ok');
+    loadWarehouses();
+  } catch(e) { showAlert('wh-result',`Error: ${e.detail||e}`,'error'); }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  QUALITY ASSESSMENT
+// ══════════════════════════════════════════════════════════════════════════════
+async function loadQuality() {
+  const tb = document.getElementById('qa-table');
+  const sumEl = document.getElementById('qa-summary');
+  try {
+    const [assessments, summary] = await Promise.all([
+      api('/quality/assessments?limit=50'), api('/quality/summary')
+    ]);
+    tb.innerHTML = assessments.map(a => `<tr>
+      <td>${a.assessment_id}</td>
+      <td><strong>${a.product_name}</strong></td>
+      <td><span class="badge badge-blue">${a.category}</span></td>
+      <td><code style="font-size:.75rem">${a.batch_number}</code></td>
+      <td><strong>${a.quality_score?.toFixed(1)}</strong>/100</td>
+      <td>${statusBadge(a.grade_classification)}</td>
+      <td>${statusBadge(a.risk_level)}</td>
+      <td>${statusBadge(a.purchase_recommendation)}</td>
+      <td>${fmtDate(a.assessment_date)}</td>
+    </tr>`).join('') || '<tr><td colspan="9" class="empty">No assessments</td></tr>';
+
+    sumEl.innerHTML = `<div class="tbl-wrap"><table>
+      <thead><tr>
+        <th>Product</th><th>Category</th><th>Total Assessments</th>
+        <th>Avg Quality Score</th><th>Avg Market Value (GHS)</th>
+      </tr></thead>
+      <tbody>
+      ${summary.map(s => `<tr>
+        <td><strong>${s.product_name}</strong></td>
+        <td><span class="badge badge-blue">${s.category}</span></td>
+        <td>${s.total_assessments}</td>
+        <td>
+          <strong>${s.average_quality_score?.toFixed(1)}</strong>/100
+          <div class="progress-wrap"><div class="progress-bar" style="width:${s.average_quality_score||0}%"></div></div>
+        </td>
+        <td>GHS ${fmt(s.average_market_value_ghs)}</td>
+      </tr>`).join('')}
+      </tbody>
+    </table></div>`;
+  } catch(e) { tb.innerHTML = `<tr><td colspan="9"><div class="alert alert-error">Error: ${e.detail||e}</div></td></tr>`; }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  DATA INTEGRATION
+// ══════════════════════════════════════════════════════════════════════════════
+async function handleDrop(e) {
+  e.preventDefault();
+  document.getElementById('upload-zone').classList.remove('drag');
+  const file = e.dataTransfer.files[0];
+  if (file) await processUpload(file);
+}
+
+async function uploadFile(event) {
+  const file = event.target.files[0];
+  if (file) await processUpload(file);
+}
+
+async function processUpload(file) {
+  const res = document.getElementById('upload-result');
+  res.innerHTML = '<div class="loading-row"><div class="spinner"></div> Running 7-step pipeline… this may take a moment.</div>';
+  const fd = new FormData();
+  fd.append('file', file);
+  try {
+    const data = await fetch(API + '/integration/upload', { method:'POST', body: fd }).then(async r => {
+      if (!r.ok) { const e = await r.json(); throw e; }
+      return r.json();
+    });
+    res.innerHTML = `
+      <div class="alert alert-ok">
+        ✅ <strong>${data.file_name}</strong> processed successfully — Session #${data.session_id}
+      </div>
+      <div class="stat-grid" style="margin-top:12px">
+        <div class="stat-card"><div class="stat-label">Status</div>
+          <div class="stat-value" style="font-size:1rem">${data.status}</div></div>
+        <div class="stat-card gold"><div class="stat-label">Imported</div>
+          <div class="stat-value">${data.records_successfully_imported.toLocaleString()}</div>
+          <div class="stat-sub">transactions</div></div>
+        <div class="stat-card ${data.records_failed>0?'red':''}">
+          <div class="stat-label">Failed Rows</div>
+          <div class="stat-value">${data.records_failed}</div></div>
+      </div>
+      <div style="margin-top:10px;font-size:.8rem;color:var(--gray)">
+        Schema: <strong>${data.data_import_report?.analysis?.detected_schema||'—'}</strong> &nbsp;|&nbsp;
+        Farmers: +${data.import_results?.farmers_created||0} new &nbsp;|&nbsp;
+        Products: +${data.import_results?.products_created||0} new &nbsp;|&nbsp;
+        Warehouses: +${data.import_results?.warehouses_created||0} new
+      </div>
+    `;
+    loadSessions();
+  } catch(e) {
+    res.innerHTML = `<div class="alert alert-error">❌ Error: ${e.detail||JSON.stringify(e)}</div>`;
+  }
+}
+
+async function loadSessions() {
+  const tb = document.getElementById('sessions-table');
+  try {
+    const data = await api('/integration/sessions?limit=20');
+    tb.innerHTML = data.map(s => `<tr>
+      <td>${s.session_id}</td>
+      <td style="max-width:160px;word-break:break-all;font-size:.75rem">${s.file_name}</td>
+      <td><span class="badge badge-gray" style="font-size:.65rem">${s.detected_schema||'—'}</span></td>
+      <td>${statusBadge(s.status)}</td>
+      <td>${(s.transactions_inserted||0).toLocaleString()}</td>
+      <td>${fmtDate(s.started_at)}</td>
+    </tr>`).join('') || '<tr><td colspan="6" class="empty">No sessions yet</td></tr>';
+  } catch(e) { tb.innerHTML = '<tr><td colspan="6">Error loading sessions</td></tr>'; }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  REPORTS
+// ══════════════════════════════════════════════════════════════════════════════
+async function loadReports() {
+  const statsEl   = document.getElementById('report-stats');
+  const gridEl    = document.getElementById('report-grid');
+  const actEl     = document.getElementById('report-actions');
+  statsEl.innerHTML = '<div class="loading-row"><div class="spinner"></div> Loading reports…</div>';
+
+  try {
+    const rpts = await api('/integration/reports/standalone');
+    const h    = rpts.inventory_health;
+    const s    = rpts.stock_summary;
+    const ls   = rpts.low_stock_alerts;
+
+    statsEl.innerHTML = `
+      <div class="stat-card"><div class="stat-label">Total Products</div>
+        <div class="stat-value">${s.total_products}</div></div>
+      <div class="stat-card gold"><div class="stat-label">Total Farmers</div>
+        <div class="stat-value">${s.total_farmers}</div></div>
+      <div class="stat-card blue"><div class="stat-label">Total Warehouses</div>
+        <div class="stat-value">${s.total_warehouses}</div></div>
+      <div class="stat-card"><div class="stat-label">Total Transactions</div>
+        <div class="stat-value">${s.total_transactions.toLocaleString()}</div></div>
+      <div class="stat-card ${h.overall_health_pct<50?'red':h.overall_health_pct<75?'orange':'gold'}">
+        <div class="stat-label">Overall Health</div>
+        <div class="stat-value">${h.overall_health_pct}%</div></div>
+      <div class="stat-card ${ls.alert_count>0?'red':''}">
+        <div class="stat-label">Low-Stock Alerts</div>
+        <div class="stat-value">${ls.alert_count}</div></div>
+    `;
+
+    // Per-product inventory cards
+    gridEl.innerHTML = (s.inventory||[]).map(item => `
+      <div class="card">
+        <div class="card-header">
+          <h3>${item.product_name}</h3>
+          ${statusBadge(item.status)}
+        </div>
+        <div class="card-body">
+          <div style="font-size:.8rem;color:var(--gray);margin-bottom:8px">${item.category} · ${item.unit}</div>
+          <div style="font-size:1.4rem;font-weight:700;color:var(--text)">${fmt(item.total_current_stock)}</div>
+          <div style="font-size:.75rem;color:var(--gray);margin-bottom:10px">current stock</div>
+          <div class="progress-wrap">
+            <div class="progress-bar ${item.status==='HEALTHY'?'':item.status==='LOW_STOCK'?'orange':'red'}"
+              style="width:${item.reorder_level>0 ? Math.min((item.total_current_stock/item.reorder_level)*10,100) : 80}%"></div>
+          </div>
+          <div style="display:flex;justify-content:space-between;font-size:.72rem;color:var(--gray);margin-top:6px">
+            <span>Reorder: ${fmt(item.reorder_level)}</span>
+            <span>Turnover: ${item.stock_turnover_rate?.toFixed(4)}</span>
+          </div>
+        </div>
+      </div>
+    `).join('');
+
+    // Actions
+    const actions = rpts.recommended_actions || [];
+    actEl.innerHTML = actions.length
+      ? actions.map(a => {
+          const cls = a.startsWith('URGENT')||a.startsWith('CRITICAL')?'error':
+                      a.startsWith('LOW')||a.startsWith('HIGH')?'warn':'info';
+          return `<div class="alert alert-${cls}">${a}</div>`;
+        }).join('')
+      : '<div class="empty">✅ No actions required — all inventory levels are healthy.</div>';
+
+  } catch(e) {
+    statsEl.innerHTML = `<div class="alert alert-error">❌ ${e.detail||e}</div>`;
+  }
+}
+
+// ── Page loader registry ─────────────────────────────────────────────────────
+const pageLoaders = {
+  dashboard:   loadDashboard,
+  inventory:   loadInventory,
+  movements:   loadTransactions,
+  forecast:    loadForecast,
+  alerts:      loadAlerts,
+  farmers:     loadFarmers,
+  products:    loadProducts,
+  warehouses:  loadWarehouses,
+  quality:     loadQuality,
+  integration: loadSessions,
+  reports:     loadReports,
+};
+
+// ── Boot ─────────────────────────────────────────────────────────────────────
+loadDashboard();
+</script>
+</body>
+</html>

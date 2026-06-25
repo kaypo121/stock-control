@@ -159,6 +159,7 @@ data/error_logs/
 *.pdf
 *.docx
 *.html
+!static/index.html
 *.xlsx
 *.xls
 *.csv
