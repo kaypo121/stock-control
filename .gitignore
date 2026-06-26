@@ -150,7 +150,8 @@ cython_debug/
 .vscode/
 
 # Project specific
-agriculture_stock.db
+# Note: agriculture_stock.db is intentionally tracked so the pre-seeded
+# database is bundled with Vercel deployments and the app starts with data.
 datesets folder/
 data/raw/
 data/processed/
