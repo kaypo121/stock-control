@@ -1,0 +1,1 @@
+"""Agriculture platform application package."""

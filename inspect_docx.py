@@ -22,6 +22,6 @@ def get_docx_text(path):
     except Exception as e:
         return f"Error reading docx: {e}"
 
-text = get_docx_text("datesets folder/Ghana_Agricultural_Data_Source_Documentation.docx")
+text = get_docx_text("datesets folder/Ghana_Agricultural_Data_Source_Documentation (1).docx")
 print("=== DOCUMENTATION CONTENT ===")
 print(text[:4000]) # Print first 4000 chars

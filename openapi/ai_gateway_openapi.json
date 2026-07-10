@@ -1,0 +1,6844 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Agriculture Stock Control, Quality Assessment & Data Integration AI",
+    "description": "\n**Complete Agricultural Management System for Ghana**\n\n### \ud83d\udce6 Stock Control Module  `/stock/`\n- Record stock movements (in / out / adjustments / transfers)\n- Real-time balance tracking per farmer and warehouse\n- Low-stock alerts and reorder level management\n- CSV/Excel data import pipeline\n- 3-month demand forecasting\n\n### \ud83d\udd2c Quality Assessment Module  `/quality/`\nPre-purchase quality evaluation for all agricultural products:\n- **Crops / Fruits / Vegetables** \u2014 Freshness, ripeness, damage %, shelf-life\n- **Livestock** \u2014 BCS, health, mobility, vaccination\n- **Poultry** \u2014 Weight, feather condition, egg production\n- **Fish** \u2014 Freshness, eye clarity, gill condition, odor, flesh quality\n\nEvery assessment returns Quality Score \u00b7 Market Readiness \u00b7 GHS Value \u00b7 Grade \u00b7 Buy/Caution/Reject\n\n### \ud83e\udd16 Data Integration AI  `/integration/`\nFull 7-step automated data pipeline:\n1. **Analyse** \u2014 Structure, missing values, duplicates, invalid data detection\n2. **Clean** \u2014 Dedup, null-fill, unit standardisation, format correction\n3. **Map** \u2014 Auto-detect schema, map to database fields\n4. **Integrate** \u2014 Insert Farmers, Products, Warehouses, Transactions, Quality Assessments\n5. **Process** \u2014 Current stock, available stock, turnover rates, reorder levels\n6. **Validate** \u2014 Constraint checks, duplicate IDs, warehouse assignment, quantity anomalies\n7. **Report** \u2014 Data Import \u00b7 Stock Summary \u00b7 Product Availability \u00b7 Inventory Health \u00b7 Low-Stock Alerts\n\nSupports: **CSV \u00b7 Excel \u00b7 JSON** \u2014 including Ghana MoFA production datasets\n    ",
+    "version": "4.0.0"
+  },
+  "paths": {
+    "/stock/in": {
+      "post": {
+        "tags": [
+          "Stock Control"
+        ],
+        "summary": "Stock In",
+        "description": "Records stock incoming for a farmer. Increments inventory balance.",
+        "operationId": "stock_in_stock_in_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StockTransactionCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StockTransactionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/stock/out": {
+      "post": {
+        "tags": [
+          "Stock Control"
+        ],
+        "summary": "Stock Out",
+        "description": "Records stock outgoing. Decrements inventory. Validates against negative stock unless configured otherwise.",
+        "operationId": "stock_out_stock_out_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StockTransactionCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StockTransactionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/stock/adjustment": {
+      "post": {
+        "tags": [
+          "Stock Control"
+        ],
+        "summary": "Stock Adjustment",
+        "description": "Registers a custom adjustment, damage, return, or transfer transaction.\nIf quantity is negative, behaves as a deduction.",
+        "operationId": "stock_adjustment_stock_adjustment_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StockAdjustmentCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StockTransactionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/stock/current": {
+      "get": {
+        "tags": [
+          "Stock Control"
+        ],
+        "summary": "Get All Current Balances",
+        "description": "Returns all current inventory balances in the system.",
+        "operationId": "get_all_current_balances_stock_current_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/StockBalanceResponse"
+                  },
+                  "type": "array",
+                  "title": "Response Get All Current Balances Stock Current Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/stock/current/{farmer_id}": {
+      "get": {
+        "tags": [
+          "Stock Control"
+        ],
+        "summary": "Get Farmer Balances",
+        "description": "Returns all inventory balances associated with a specific farmer.",
+        "operationId": "get_farmer_balances_stock_current__farmer_id__get",
+        "parameters": [
+          {
+            "name": "farmer_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Farmer Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/StockBalanceResponse"
+                  },
+                  "title": "Response Get Farmer Balances Stock Current  Farmer Id  Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/stock/current/{farmer_id}/{product_id}": {
+      "get": {
+        "tags": [
+          "Stock Control"
+        ],
+        "summary": "Get Specific Balance",
+        "description": "Returns the inventory balance for a specific farmer, product, and optional warehouse.",
+        "operationId": "get_specific_balance_stock_current__farmer_id___product_id__get",
+        "parameters": [
+          {
+            "name": "farmer_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Farmer Id"
+            }
+          },
+          {
+            "name": "product_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Product Id"
+            }
+          },
+          {
+            "name": "warehouse_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Warehouse Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StockBalanceResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/stock/transactions": {
+      "get": {
+        "tags": [
+          "Stock Control"
+        ],
+        "summary": "Get Transaction History",
+        "description": "Retrieves chronological transaction log (audit trail), optionally filtered.",
+        "operationId": "get_transaction_history_stock_transactions_get",
+        "parameters": [
+          {
+            "name": "farmer_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Farmer Id"
+            }
+          },
+          {
+            "name": "product_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Product Id"
+            }
+          },
+          {
+            "name": "warehouse_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Warehouse Id"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1000,
+              "minimum": 1,
+              "default": 100,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/StockTransactionResponse"
+                  },
+                  "title": "Response Get Transaction History Stock Transactions Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/stock/alerts": {
+      "get": {
+        "tags": [
+          "Stock Control"
+        ],
+        "summary": "Get Active Alerts",
+        "description": "Fetches all active stock alerts (e.g. low-stock or unit-mismatch issues).",
+        "operationId": "get_active_alerts_stock_alerts_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/StockAlertResponse"
+                  },
+                  "type": "array",
+                  "title": "Response Get Active Alerts Stock Alerts Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/stock/low-stock": {
+      "get": {
+        "tags": [
+          "Stock Control"
+        ],
+        "summary": "Get Low Stock Items",
+        "description": "Retrieves all product balances that have dropped below or equal to their reorder thresholds.",
+        "operationId": "get_low_stock_items_stock_low_stock_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/BalanceSummary"
+                  },
+                  "type": "array",
+                  "title": "Response Get Low Stock Items Stock Low Stock Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/stock/import": {
+      "post": {
+        "tags": [
+          "Stock Control"
+        ],
+        "summary": "Run Import Pipeline",
+        "description": "Scans the raw data folder (`data/raw/`), cleans files,\nresolves mappings, registers new models, logs failures, and imports transactions.",
+        "operationId": "run_import_pipeline_stock_import_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ImportResult"
+                  },
+                  "type": "array",
+                  "title": "Response Run Import Pipeline Stock Import Post"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/stock/import/logs": {
+      "get": {
+        "tags": [
+          "Stock Control"
+        ],
+        "summary": "Get Import Logs",
+        "description": "Retrieves database records of all import runs.",
+        "operationId": "get_import_logs_stock_import_logs_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ImportLogResponse"
+                  },
+                  "type": "array",
+                  "title": "Response Get Import Logs Stock Import Logs Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/stock/forecast/{product_id}": {
+      "get": {
+        "tags": [
+          "Stock Control"
+        ],
+        "summary": "Get Product Forecast",
+        "description": "Generates Weekly/Monthly consumption forecasts and Runout coverage estimates for a product.",
+        "operationId": "get_product_forecast_stock_forecast__product_id__get",
+        "parameters": [
+          {
+            "name": "product_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Product Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/stock/farmers": {
+      "post": {
+        "tags": [
+          "Stock Control"
+        ],
+        "summary": "Register Farmer",
+        "operationId": "register_farmer_stock_farmers_post",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FarmerCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FarmerResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "Stock Control"
+        ],
+        "summary": "List Farmers",
+        "operationId": "list_farmers_stock_farmers_get",
+        "parameters": [
+          {
+            "name": "skip",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 0,
+              "title": "Skip"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 100,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/FarmerResponse"
+                  },
+                  "title": "Response List Farmers Stock Farmers Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/stock/products": {
+      "post": {
+        "tags": [
+          "Stock Control"
+        ],
+        "summary": "Register Product",
+        "operationId": "register_product_stock_products_post",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProductCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "Stock Control"
+        ],
+        "summary": "List Products",
+        "operationId": "list_products_stock_products_get",
+        "parameters": [
+          {
+            "name": "skip",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 0,
+              "title": "Skip"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 100,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ProductResponse"
+                  },
+                  "title": "Response List Products Stock Products Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/stock/warehouses": {
+      "get": {
+        "tags": [
+          "Stock Control"
+        ],
+        "summary": "List Warehouses",
+        "operationId": "list_warehouses_stock_warehouses_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/WarehouseResponse"
+                  },
+                  "type": "array",
+                  "title": "Response List Warehouses Stock Warehouses Get"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Stock Control"
+        ],
+        "summary": "Register Warehouse",
+        "operationId": "register_warehouse_stock_warehouses_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WarehouseCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WarehouseResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/quality/assess": {
+      "post": {
+        "tags": [
+          "Quality Assessment"
+        ],
+        "summary": "Submit a new quality assessment",
+        "description": "Runs a full quality assessment on any agricultural product.\n\n**Supported categories:** Crop \u00b7 Fruit \u00b7 Vegetable \u00b7 Livestock \u00b7 Poultry \u00b7 Fish\n\nProvide exactly the attribute block that matches your category:\n- `produce_attributes`   \u2192 for Crop, Fruit, Vegetable\n- `livestock_attributes` \u2192 for Livestock\n- `poultry_attributes`   \u2192 for Poultry\n- `fish_attributes`      \u2192 for Fish\n\nReturns a fully scored JSON record with:\n- Quality Score (0\u2013100)\n- Market Readiness Score\n- Estimated Market Value (GHS)\n- Risk Level\n- Grade Classification\n- Purchase Recommendation + Reason",
+        "operationId": "submit_assessment_quality_assess_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QualityAssessmentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QualityAssessmentResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/quality/assessments": {
+      "get": {
+        "tags": [
+          "Quality Assessment"
+        ],
+        "summary": "List quality assessments",
+        "operationId": "list_assessments_quality_assessments_get",
+        "parameters": [
+          {
+            "name": "product_name",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by product name (partial match)",
+              "title": "Product Name"
+            },
+            "description": "Filter by product name (partial match)"
+          },
+          {
+            "name": "category",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by category (e.g. Crop, Fish)",
+              "title": "Category"
+            },
+            "description": "Filter by category (e.g. Crop, Fish)"
+          },
+          {
+            "name": "farmer_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by farmer ID",
+              "title": "Farmer Id"
+            },
+            "description": "Filter by farmer ID"
+          },
+          {
+            "name": "recommendation",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by recommendation: Buy | Buy with Caution | Do Not Buy",
+              "title": "Recommendation"
+            },
+            "description": "Filter by recommendation: Buy | Buy with Caution | Do Not Buy"
+          },
+          {
+            "name": "skip",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Skip"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 500,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AssessmentListItem"
+                  },
+                  "title": "Response List Assessments Quality Assessments Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/quality/assessments/{assessment_id}": {
+      "get": {
+        "tags": [
+          "Quality Assessment"
+        ],
+        "summary": "Get a single assessment by ID",
+        "operationId": "get_assessment_quality_assessments__assessment_id__get",
+        "parameters": [
+          {
+            "name": "assessment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Assessment Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QualityAssessmentResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Quality Assessment"
+        ],
+        "summary": "Delete an assessment record",
+        "operationId": "delete_assessment_quality_assessments__assessment_id__delete",
+        "parameters": [
+          {
+            "name": "assessment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Assessment Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/quality/summary": {
+      "get": {
+        "tags": [
+          "Quality Assessment"
+        ],
+        "summary": "Aggregated quality statistics by product",
+        "description": "Returns aggregated quality stats per product:\n- Average quality score\n- Average market readiness\n- Grade distribution\n- Recommendation breakdown\n- Total assessments",
+        "operationId": "quality_summary_quality_summary_get",
+        "parameters": [
+          {
+            "name": "category",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by category",
+              "title": "Category"
+            },
+            "description": "Filter by category"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": true
+                  },
+                  "title": "Response Quality Summary Quality Summary Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/quality/categories": {
+      "get": {
+        "tags": [
+          "Quality Assessment"
+        ],
+        "summary": "Reference: valid categories, grades, risk levels, and recommendations",
+        "description": "Returns all valid enum values for use in frontend dropdowns.",
+        "operationId": "get_reference_enums_quality_categories_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "type": "object",
+                  "title": "Response Get Reference Enums Quality Categories Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/integration/upload": {
+      "post": {
+        "tags": [
+          "Data Integration AI"
+        ],
+        "summary": "Upload a file and run the full 7-step integration pipeline",
+        "description": "Upload any supported file (CSV, Excel, JSON) containing agricultural data.\n\nThe AI will automatically:\n1. **Analyse** \u2014 structure, missing values, duplicates, invalid data\n2. **Clean** \u2014 remove dupes, fill nulls, standardise units & formats\n3. **Map** \u2014 auto-detect schema, map columns to database fields\n4. **Integrate** \u2014 insert Farmers, Products, Warehouses, Transactions\n5. **Process** \u2014 compute current/available/damaged stock and turnover rates\n6. **Validate** \u2014 constraint checks, duplicate IDs, quantity anomalies\n7. **Report** \u2014 generate 5 reports: Import, Stock Summary, Availability, Health, Low-Stock Alerts\n\nSupported: **.csv \u00b7 .xlsx \u00b7 .xls \u00b7 .json**",
+        "operationId": "upload_and_integrate_integration_upload_post",
+        "parameters": [
+          {
+            "name": "initiated_by",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Name of the person uploading",
+              "default": "API User",
+              "title": "Initiated By"
+            },
+            "description": "Name of the person uploading"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_and_integrate_integration_upload_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntegrationPipelineResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/integration/scan": {
+      "post": {
+        "tags": [
+          "Data Integration AI"
+        ],
+        "summary": "Scan the raw data folder and run the pipeline on all files",
+        "operationId": "scan_and_integrate_integration_scan_post",
+        "parameters": [
+          {
+            "name": "initiated_by",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": "System Scan",
+              "title": "Initiated By"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Scan And Integrate Integration Scan Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/integration/sessions": {
+      "get": {
+        "tags": [
+          "Data Integration AI"
+        ],
+        "summary": "List all import sessions",
+        "operationId": "list_sessions_integration_sessions_get",
+        "parameters": [
+          {
+            "name": "skip",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Skip"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 500,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SessionListItem"
+                  },
+                  "title": "Response List Sessions Integration Sessions Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/integration/sessions/{session_id}": {
+      "get": {
+        "tags": [
+          "Data Integration AI"
+        ],
+        "summary": "Get full detail for one import session",
+        "operationId": "get_session_integration_sessions__session_id__get",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionDetailResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Data Integration AI"
+        ],
+        "summary": "Delete an integration session and its reports",
+        "operationId": "delete_session_integration_sessions__session_id__delete",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/integration/sessions/{session_id}/reports": {
+      "get": {
+        "tags": [
+          "Data Integration AI"
+        ],
+        "summary": "List all reports generated for a session",
+        "operationId": "list_session_reports_integration_sessions__session_id__reports_get",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ReportListItem"
+                  },
+                  "title": "Response List Session Reports Integration Sessions  Session Id  Reports Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/integration/reports/standalone": {
+      "get": {
+        "tags": [
+          "Data Integration AI"
+        ],
+        "summary": "Generate all 5 live reports from current DB state (no file upload needed)",
+        "description": "Generates reports directly from the live database.\n\nReturns:\n- **Stock Summary** \u2014 totals and per-product inventory\n- **Product Availability** \u2014 available, out-of-stock, and low-stock lists\n- **Inventory Health** \u2014 overall health %, status per product\n- **Low Stock Alerts** \u2014 alerts with recommended reorder actions",
+        "operationId": "standalone_reports_integration_reports_standalone_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Standalone Reports Integration Reports Standalone Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/integration/reports/{report_id}": {
+      "get": {
+        "tags": [
+          "Data Integration AI"
+        ],
+        "summary": "Get the full JSON payload of a specific report",
+        "operationId": "get_report_integration_reports__report_id__get",
+        "parameters": [
+          {
+            "name": "report_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Report Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Get Report Integration Reports  Report Id  Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/integration/inventory": {
+      "get": {
+        "tags": [
+          "Data Integration AI"
+        ],
+        "summary": "Live inventory statistics for all products",
+        "operationId": "live_inventory_integration_inventory_get",
+        "parameters": [
+          {
+            "name": "category",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by category e.g. Grains",
+              "title": "Category"
+            },
+            "description": "Filter by category e.g. Grains"
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "HEALTHY | LOW_STOCK | CRITICAL | OUT_OF_STOCK",
+              "title": "Status"
+            },
+            "description": "HEALTHY | LOW_STOCK | CRITICAL | OUT_OF_STOCK"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/InventoryStats"
+                  },
+                  "title": "Response Live Inventory Integration Inventory Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/integration/health": {
+      "get": {
+        "tags": [
+          "Data Integration AI"
+        ],
+        "summary": "Quick inventory health snapshot",
+        "operationId": "health_snapshot_integration_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Health Snapshot Integration Health Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/auth/principals": {
+      "post": {
+        "tags": [
+          "AI Gateway"
+        ],
+        "summary": "Register Principal",
+        "operationId": "register_principal_v1_auth_principals_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PrincipalRegistrationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/auth/api-keys": {
+      "post": {
+        "tags": [
+          "AI Gateway"
+        ],
+        "summary": "Create Api Key",
+        "operationId": "create_api_key_v1_auth_api_keys_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApiKeyCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/auth/token": {
+      "post": {
+        "tags": [
+          "AI Gateway"
+        ],
+        "summary": "Issue Token",
+        "operationId": "issue_token_v1_auth_token_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TokenRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/auth/api-keys/{key_id}/rotate": {
+      "post": {
+        "tags": [
+          "AI Gateway"
+        ],
+        "summary": "Rotate Api Key",
+        "operationId": "rotate_api_key_v1_auth_api_keys__key_id__rotate_post",
+        "parameters": [
+          {
+            "name": "key_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Key Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/health": {
+      "get": {
+        "tags": [
+          "AI Gateway"
+        ],
+        "summary": "Health",
+        "operationId": "health_v1_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/status": {
+      "get": {
+        "tags": [
+          "AI Gateway"
+        ],
+        "summary": "Status Endpoint",
+        "operationId": "status_endpoint_v1_status_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/version": {
+      "get": {
+        "tags": [
+          "AI Gateway"
+        ],
+        "summary": "Version",
+        "operationId": "version_v1_version_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/plugins": {
+      "get": {
+        "tags": [
+          "AI Gateway"
+        ],
+        "summary": "List Plugins",
+        "operationId": "list_plugins_v1_plugins_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/ai/providers": {
+      "get": {
+        "tags": [
+          "AI Gateway"
+        ],
+        "summary": "List Ai Providers",
+        "operationId": "list_ai_providers_v1_ai_providers_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/ai/models": {
+      "get": {
+        "tags": [
+          "AI Gateway"
+        ],
+        "summary": "List Ai Models",
+        "operationId": "list_ai_models_v1_ai_models_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/ai/execute": {
+      "post": {
+        "tags": [
+          "AI Gateway"
+        ],
+        "summary": "Execute Ai Request",
+        "operationId": "execute_ai_request_v1_ai_execute_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GatewayRequestEnvelope"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/actions/execute": {
+      "post": {
+        "tags": [
+          "AI Gateway"
+        ],
+        "summary": "Execute Action",
+        "operationId": "execute_action_v1_actions_execute_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GatewayRequestEnvelope"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/ai/batch": {
+      "post": {
+        "tags": [
+          "AI Gateway"
+        ],
+        "summary": "Batch Execute",
+        "operationId": "batch_execute_v1_ai_batch_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BatchGatewayRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/ai/stream": {
+      "post": {
+        "tags": [
+          "AI Gateway"
+        ],
+        "summary": "Stream Ai Request",
+        "operationId": "stream_ai_request_v1_ai_stream_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GatewayRequestEnvelope"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/ai/notifications/stream": {
+      "get": {
+        "tags": [
+          "AI Gateway"
+        ],
+        "summary": "Notifications Stream",
+        "operationId": "notifications_stream_v1_ai_notifications_stream_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/ai/chat/completions": {
+      "post": {
+        "tags": [
+          "AI Gateway"
+        ],
+        "summary": "Chat Completions",
+        "operationId": "chat_completions_v1_ai_chat_completions_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatCompletionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/chat/completions": {
+      "post": {
+        "tags": [
+          "AI Gateway"
+        ],
+        "summary": "Chat Completions",
+        "operationId": "chat_completions_v1_chat_completions_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatCompletionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/agents/register": {
+      "post": {
+        "tags": [
+          "AI Gateway"
+        ],
+        "summary": "Register Agent",
+        "operationId": "register_agent_v1_agents_register_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PrincipalRegistrationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/agents": {
+      "get": {
+        "tags": [
+          "AI Gateway"
+        ],
+        "summary": "List Agents",
+        "operationId": "list_agents_v1_agents_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/tasks": {
+      "post": {
+        "tags": [
+          "AI Gateway"
+        ],
+        "summary": "Create Task",
+        "operationId": "create_task_v1_tasks_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TaskCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/tasks/{task_id}": {
+      "get": {
+        "tags": [
+          "AI Gateway"
+        ],
+        "summary": "Get Task",
+        "operationId": "get_task_v1_tasks__task_id__get",
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Task Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/tasks/{task_id}/cancel": {
+      "post": {
+        "tags": [
+          "AI Gateway"
+        ],
+        "summary": "Cancel Task",
+        "operationId": "cancel_task_v1_tasks__task_id__cancel_post",
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Task Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/tools/execute": {
+      "post": {
+        "tags": [
+          "AI Gateway"
+        ],
+        "summary": "Execute Tool",
+        "operationId": "execute_tool_v1_tools_execute_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ToolExecutionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/context/{session_id}": {
+      "get": {
+        "tags": [
+          "AI Gateway"
+        ],
+        "summary": "Get Context",
+        "operationId": "get_context_v1_context__session_id__get",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/workspaces/{workspace_id}/context": {
+      "get": {
+        "tags": [
+          "AI Gateway"
+        ],
+        "summary": "Get Workspace Context",
+        "operationId": "get_workspace_context_v1_workspaces__workspace_id__context_get",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/projects/{project_id}/context": {
+      "get": {
+        "tags": [
+          "AI Gateway"
+        ],
+        "summary": "Get Project Context",
+        "operationId": "get_project_context_v1_projects__project_id__context_get",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/users/{user_id}/context": {
+      "get": {
+        "tags": [
+          "AI Gateway"
+        ],
+        "summary": "Get User Context",
+        "operationId": "get_user_context_v1_users__user_id__context_get",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "User Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/files/upload": {
+      "post": {
+        "tags": [
+          "AI Gateway"
+        ],
+        "summary": "Upload File",
+        "operationId": "upload_file_v1_files_upload_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_file_v1_files_upload_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/files/{file_id}": {
+      "get": {
+        "tags": [
+          "AI Gateway"
+        ],
+        "summary": "Get File",
+        "operationId": "get_file_v1_files__file_id__get",
+        "parameters": [
+          {
+            "name": "file_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "File Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/webhooks": {
+      "get": {
+        "tags": [
+          "AI Gateway"
+        ],
+        "summary": "List Webhooks",
+        "operationId": "list_webhooks_v1_webhooks_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "AI Gateway"
+        ],
+        "summary": "Register Webhook",
+        "operationId": "register_webhook_v1_webhooks_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WebhookRegistrationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/events": {
+      "get": {
+        "tags": [
+          "AI Gateway"
+        ],
+        "summary": "List Events",
+        "operationId": "list_events_v1_events_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "AI Gateway"
+        ],
+        "summary": "Publish Event",
+        "operationId": "publish_event_v1_events_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EventPublishRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AnalysisSummary": {
+        "properties": {
+          "file_name": {
+            "type": "string",
+            "title": "File Name"
+          },
+          "data_source": {
+            "type": "string",
+            "title": "Data Source"
+          },
+          "detected_schema": {
+            "type": "string",
+            "title": "Detected Schema"
+          },
+          "total_rows": {
+            "type": "integer",
+            "title": "Total Rows"
+          },
+          "total_columns": {
+            "type": "integer",
+            "title": "Total Columns"
+          },
+          "column_list": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Column List"
+          },
+          "missing_value_count": {
+            "type": "integer",
+            "title": "Missing Value Count"
+          },
+          "duplicate_row_count": {
+            "type": "integer",
+            "title": "Duplicate Row Count"
+          },
+          "invalid_data_count": {
+            "type": "integer",
+            "title": "Invalid Data Count"
+          },
+          "sample_issues": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Sample Issues"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file_name",
+          "data_source",
+          "detected_schema",
+          "total_rows",
+          "total_columns",
+          "column_list",
+          "missing_value_count",
+          "duplicate_row_count",
+          "invalid_data_count",
+          "sample_issues"
+        ],
+        "title": "AnalysisSummary"
+      },
+      "ApiKeyCreateRequest": {
+        "properties": {
+          "principalId": {
+            "type": "string",
+            "title": "Principalid"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "credentialType": {
+            "type": "string",
+            "enum": [
+              "API_KEY",
+              "SERVICE_TOKEN",
+              "MACHINE_TOKEN"
+            ],
+            "title": "Credentialtype",
+            "default": "API_KEY"
+          },
+          "scopes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Scopes"
+          },
+          "expiresInDays": {
+            "type": "integer",
+            "maximum": 365.0,
+            "minimum": 1.0,
+            "title": "Expiresindays",
+            "default": 90
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata"
+          }
+        },
+        "type": "object",
+        "required": [
+          "principalId",
+          "label"
+        ],
+        "title": "ApiKeyCreateRequest"
+      },
+      "AssessmentListItem": {
+        "properties": {
+          "assessment_id": {
+            "type": "integer",
+            "title": "Assessment Id"
+          },
+          "batch_number": {
+            "type": "string",
+            "title": "Batch Number"
+          },
+          "product_name": {
+            "type": "string",
+            "title": "Product Name"
+          },
+          "category": {
+            "type": "string",
+            "title": "Category"
+          },
+          "farmer_supplier": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Farmer Supplier"
+          },
+          "assessment_date": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Assessment Date"
+          },
+          "quality_score": {
+            "type": "number",
+            "title": "Quality Score"
+          },
+          "grade_classification": {
+            "type": "string",
+            "title": "Grade Classification"
+          },
+          "purchase_recommendation": {
+            "type": "string",
+            "title": "Purchase Recommendation"
+          },
+          "risk_level": {
+            "type": "string",
+            "title": "Risk Level"
+          }
+        },
+        "type": "object",
+        "required": [
+          "assessment_id",
+          "batch_number",
+          "product_name",
+          "category",
+          "farmer_supplier",
+          "assessment_date",
+          "quality_score",
+          "grade_classification",
+          "purchase_recommendation",
+          "risk_level"
+        ],
+        "title": "AssessmentListItem",
+        "description": "Lightweight summary for list views."
+      },
+      "BalanceSummary": {
+        "properties": {
+          "farmer_name": {
+            "type": "string",
+            "title": "Farmer Name"
+          },
+          "product_name": {
+            "type": "string",
+            "title": "Product Name"
+          },
+          "warehouse_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Warehouse Name"
+          },
+          "current_stock": {
+            "type": "number",
+            "title": "Current Stock"
+          },
+          "unit": {
+            "type": "string",
+            "title": "Unit"
+          },
+          "reorder_level": {
+            "type": "number",
+            "title": "Reorder Level"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "farmer_name",
+          "product_name",
+          "warehouse_name",
+          "current_stock",
+          "unit",
+          "reorder_level",
+          "status"
+        ],
+        "title": "BalanceSummary"
+      },
+      "BatchGatewayRequest": {
+        "properties": {
+          "requests": {
+            "items": {
+              "$ref": "#/components/schemas/GatewayRequestEnvelope"
+            },
+            "type": "array",
+            "maxItems": 50,
+            "minItems": 1,
+            "title": "Requests"
+          }
+        },
+        "type": "object",
+        "required": [
+          "requests"
+        ],
+        "title": "BatchGatewayRequest"
+      },
+      "Body_upload_and_integrate_integration_upload_post": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "description": "Dataset file to import"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file"
+        ],
+        "title": "Body_upload_and_integrate_integration_upload_post"
+      },
+      "Body_upload_file_v1_files_upload_post": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "File"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file"
+        ],
+        "title": "Body_upload_file_v1_files_upload_post"
+      },
+      "ChatCompletionRequest": {
+        "properties": {
+          "provider": {
+            "type": "string",
+            "title": "Provider"
+          },
+          "model": {
+            "type": "string",
+            "title": "Model"
+          },
+          "messages": {
+            "items": {
+              "$ref": "#/components/schemas/ChatMessage"
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Messages"
+          },
+          "stream": {
+            "type": "boolean",
+            "title": "Stream",
+            "default": false
+          },
+          "context": {
+            "$ref": "#/components/schemas/GatewayContextEnvelope"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata"
+          }
+        },
+        "type": "object",
+        "required": [
+          "provider",
+          "model",
+          "messages"
+        ],
+        "title": "ChatCompletionRequest"
+      },
+      "ChatMessage": {
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "system",
+              "user",
+              "assistant",
+              "tool"
+            ],
+            "title": "Role"
+          },
+          "content": {
+            "type": "string",
+            "title": "Content"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "role",
+          "content"
+        ],
+        "title": "ChatMessage"
+      },
+      "CleaningSummary": {
+        "properties": {
+          "rows_before": {
+            "type": "integer",
+            "title": "Rows Before"
+          },
+          "rows_after": {
+            "type": "integer",
+            "title": "Rows After"
+          },
+          "duplicates_removed": {
+            "type": "integer",
+            "title": "Duplicates Removed"
+          },
+          "nulls_filled": {
+            "type": "integer",
+            "title": "Nulls Filled"
+          },
+          "units_standardised": {
+            "type": "integer",
+            "title": "Units Standardised"
+          },
+          "format_corrections": {
+            "type": "integer",
+            "title": "Format Corrections"
+          },
+          "actions_taken": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Actions Taken"
+          }
+        },
+        "type": "object",
+        "required": [
+          "rows_before",
+          "rows_after",
+          "duplicates_removed",
+          "nulls_filled",
+          "units_standardised",
+          "format_corrections",
+          "actions_taken"
+        ],
+        "title": "CleaningSummary"
+      },
+      "DataImportReport": {
+        "properties": {
+          "report_type": {
+            "type": "string",
+            "title": "Report Type",
+            "default": "DATA_IMPORT"
+          },
+          "session_id": {
+            "type": "integer",
+            "title": "Session Id"
+          },
+          "file_name": {
+            "type": "string",
+            "title": "File Name"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Started At"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "analysis": {
+            "$ref": "#/components/schemas/AnalysisSummary"
+          },
+          "cleaning": {
+            "$ref": "#/components/schemas/CleaningSummary"
+          },
+          "mapping": {
+            "$ref": "#/components/schemas/MappingSummary"
+          },
+          "integration": {
+            "$ref": "#/components/schemas/IntegrationSummary"
+          },
+          "validation": {
+            "$ref": "#/components/schemas/ValidationResult"
+          },
+          "records_imported": {
+            "type": "integer",
+            "title": "Records Imported"
+          },
+          "records_failed": {
+            "type": "integer",
+            "title": "Records Failed"
+          },
+          "errors_found": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Errors Found"
+          },
+          "recommended_actions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Recommended Actions"
+          }
+        },
+        "type": "object",
+        "required": [
+          "session_id",
+          "file_name",
+          "status",
+          "started_at",
+          "completed_at",
+          "analysis",
+          "cleaning",
+          "mapping",
+          "integration",
+          "validation",
+          "records_imported",
+          "records_failed",
+          "errors_found",
+          "recommended_actions"
+        ],
+        "title": "DataImportReport"
+      },
+      "EventPublishRequest": {
+        "properties": {
+          "eventType": {
+            "type": "string",
+            "title": "Eventtype"
+          },
+          "topic": {
+            "type": "string",
+            "title": "Topic"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source"
+          },
+          "payload": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Payload"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata"
+          }
+        },
+        "type": "object",
+        "required": [
+          "eventType",
+          "topic",
+          "source"
+        ],
+        "title": "EventPublishRequest"
+      },
+      "FarmerCreate": {
+        "properties": {
+          "full_name": {
+            "type": "string",
+            "title": "Full Name",
+            "description": "Farmer's full name"
+          },
+          "phone_number": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phone Number",
+            "description": "Contact phone number"
+          },
+          "region": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Region",
+            "description": "Ghana administrative region (e.g. Ashanti, Volta)"
+          },
+          "district": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "District",
+            "description": "District location"
+          },
+          "farm_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Farm Name",
+            "description": "Name of the farm"
+          }
+        },
+        "type": "object",
+        "required": [
+          "full_name"
+        ],
+        "title": "FarmerCreate"
+      },
+      "FarmerResponse": {
+        "properties": {
+          "full_name": {
+            "type": "string",
+            "title": "Full Name",
+            "description": "Farmer's full name"
+          },
+          "phone_number": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phone Number",
+            "description": "Contact phone number"
+          },
+          "region": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Region",
+            "description": "Ghana administrative region (e.g. Ashanti, Volta)"
+          },
+          "district": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "District",
+            "description": "District location"
+          },
+          "farm_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Farm Name",
+            "description": "Name of the farm"
+          },
+          "farmer_id": {
+            "type": "integer",
+            "title": "Farmer Id"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "full_name",
+          "farmer_id",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "FarmerResponse"
+      },
+      "FishAttributesInput": {
+        "properties": {
+          "species": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Species",
+            "description": "Species (e.g. Tilapia, Catfish, Tuna, Herring)"
+          },
+          "weight_kg": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Weight Kg",
+            "description": "Weight in kg"
+          },
+          "length_cm": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Length Cm",
+            "description": "Length in cm"
+          },
+          "freshness_level": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FreshnessLevel"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "eye_clarity": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Eye Clarity",
+            "description": "e.g. 'Clear, Bright', 'Slightly Cloudy', 'Sunken'"
+          },
+          "gill_condition": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gill Condition",
+            "description": "e.g. 'Bright Red', 'Pink', 'Brown/Grey'"
+          },
+          "odor_assessment": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Odor Assessment",
+            "description": "e.g. 'Fresh Sea Smell', 'Mild Odor', 'Foul'"
+          },
+          "flesh_quality": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Flesh Quality",
+            "description": "e.g. 'Firm, Elastic', 'Soft', 'Mushy'"
+          }
+        },
+        "type": "object",
+        "title": "FishAttributesInput",
+        "description": "Physical and quality attributes for Fish."
+      },
+      "FishDetailResponse": {
+        "properties": {
+          "species": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Species"
+          },
+          "weight_kg": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Weight Kg"
+          },
+          "length_cm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Length Cm"
+          },
+          "freshness_level": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Freshness Level"
+          },
+          "eye_clarity": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Eye Clarity"
+          },
+          "gill_condition": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gill Condition"
+          },
+          "odor_assessment": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Odor Assessment"
+          },
+          "flesh_quality": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Flesh Quality"
+          }
+        },
+        "type": "object",
+        "required": [
+          "species",
+          "weight_kg",
+          "length_cm",
+          "freshness_level",
+          "eye_clarity",
+          "gill_condition",
+          "odor_assessment",
+          "flesh_quality"
+        ],
+        "title": "FishDetailResponse"
+      },
+      "FreshnessLevel": {
+        "type": "string",
+        "enum": [
+          "Very Fresh",
+          "Fresh",
+          "Acceptable",
+          "Stale",
+          "Spoiled"
+        ],
+        "title": "FreshnessLevel"
+      },
+      "GatewayActionEnvelope": {
+        "properties": {
+          "module": {
+            "type": "string",
+            "title": "Module"
+          },
+          "resource": {
+            "type": "string",
+            "title": "Resource"
+          },
+          "operation": {
+            "type": "string",
+            "title": "Operation"
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "sync",
+              "async",
+              "stream"
+            ],
+            "title": "Mode",
+            "default": "sync"
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider"
+          },
+          "target": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target"
+          },
+          "timeoutSeconds": {
+            "type": "integer",
+            "maximum": 300.0,
+            "minimum": 1.0,
+            "title": "Timeoutseconds",
+            "default": 30
+          }
+        },
+        "type": "object",
+        "required": [
+          "module",
+          "resource",
+          "operation"
+        ],
+        "title": "GatewayActionEnvelope"
+      },
+      "GatewayContextEnvelope": {
+        "properties": {
+          "conversationId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conversationid"
+          },
+          "sessionId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sessionid"
+          },
+          "memoryId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Memoryid"
+          },
+          "workspaceId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workspaceid"
+          },
+          "projectId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Projectid"
+          },
+          "organizationId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Organizationid"
+          },
+          "userId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Userid"
+          },
+          "agentId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agentid"
+          },
+          "toolId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Toolid"
+          },
+          "correlationId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Correlationid"
+          },
+          "traceId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Traceid"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Tags"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata"
+          }
+        },
+        "type": "object",
+        "title": "GatewayContextEnvelope"
+      },
+      "GatewayParty": {
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Type"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "role": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Role"
+          }
+        },
+        "type": "object",
+        "title": "GatewayParty"
+      },
+      "GatewayRequestEnvelope": {
+        "properties": {
+          "requestId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Requestid"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Timestamp"
+          },
+          "agent": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GatewayParty"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "user": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GatewayParty"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "workspace": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GatewayScopeRef"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "context": {
+            "$ref": "#/components/schemas/GatewayContextEnvelope"
+          },
+          "action": {
+            "$ref": "#/components/schemas/GatewayActionEnvelope"
+          },
+          "payload": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Payload"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata"
+          }
+        },
+        "type": "object",
+        "required": [
+          "action"
+        ],
+        "title": "GatewayRequestEnvelope"
+      },
+      "GatewayScopeRef": {
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "title": "GatewayScopeRef"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "HealthStatus": {
+        "type": "string",
+        "enum": [
+          "Excellent",
+          "Good",
+          "Fair",
+          "Poor",
+          "Critical"
+        ],
+        "title": "HealthStatus"
+      },
+      "ImportLogResponse": {
+        "properties": {
+          "log_id": {
+            "type": "integer",
+            "title": "Log Id"
+          },
+          "file_name": {
+            "type": "string",
+            "title": "File Name"
+          },
+          "import_status": {
+            "type": "string",
+            "title": "Import Status"
+          },
+          "records_processed": {
+            "type": "integer",
+            "title": "Records Processed"
+          },
+          "records_failed": {
+            "type": "integer",
+            "title": "Records Failed"
+          },
+          "error_summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Summary"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "log_id",
+          "file_name",
+          "import_status",
+          "records_processed",
+          "records_failed",
+          "error_summary",
+          "created_at"
+        ],
+        "title": "ImportLogResponse"
+      },
+      "ImportResult": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "imported_count": {
+            "type": "integer",
+            "title": "Imported Count"
+          },
+          "failed_count": {
+            "type": "integer",
+            "title": "Failed Count"
+          },
+          "error_log_file": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Log File"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "imported_count",
+          "failed_count",
+          "message"
+        ],
+        "title": "ImportResult"
+      },
+      "IntegrationPipelineResult": {
+        "properties": {
+          "session_id": {
+            "type": "integer",
+            "title": "Session Id"
+          },
+          "file_name": {
+            "type": "string",
+            "title": "File Name"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "cleaned_dataset_summary": {
+            "$ref": "#/components/schemas/CleaningSummary"
+          },
+          "database_mapping_summary": {
+            "$ref": "#/components/schemas/MappingSummary"
+          },
+          "import_results": {
+            "$ref": "#/components/schemas/IntegrationSummary"
+          },
+          "errors_found": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Errors Found"
+          },
+          "records_successfully_imported": {
+            "type": "integer",
+            "title": "Records Successfully Imported"
+          },
+          "records_failed": {
+            "type": "integer",
+            "title": "Records Failed"
+          },
+          "inventory_statistics": {
+            "items": {
+              "$ref": "#/components/schemas/InventoryStats"
+            },
+            "type": "array",
+            "title": "Inventory Statistics"
+          },
+          "recommended_actions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Recommended Actions"
+          },
+          "data_import_report": {
+            "$ref": "#/components/schemas/DataImportReport"
+          },
+          "stock_summary_report": {
+            "$ref": "#/components/schemas/StockSummaryReport"
+          },
+          "product_availability_report": {
+            "$ref": "#/components/schemas/ProductAvailabilityReport"
+          },
+          "inventory_health_report": {
+            "$ref": "#/components/schemas/InventoryHealthReport"
+          },
+          "low_stock_alert_report": {
+            "$ref": "#/components/schemas/LowStockAlertReport"
+          }
+        },
+        "type": "object",
+        "required": [
+          "session_id",
+          "file_name",
+          "status",
+          "cleaned_dataset_summary",
+          "database_mapping_summary",
+          "import_results",
+          "errors_found",
+          "records_successfully_imported",
+          "records_failed",
+          "inventory_statistics",
+          "recommended_actions",
+          "data_import_report",
+          "stock_summary_report",
+          "product_availability_report",
+          "inventory_health_report",
+          "low_stock_alert_report"
+        ],
+        "title": "IntegrationPipelineResult",
+        "description": "Complete output returned by a full pipeline run."
+      },
+      "IntegrationSummary": {
+        "properties": {
+          "farmers_created": {
+            "type": "integer",
+            "title": "Farmers Created"
+          },
+          "farmers_matched": {
+            "type": "integer",
+            "title": "Farmers Matched"
+          },
+          "products_created": {
+            "type": "integer",
+            "title": "Products Created"
+          },
+          "products_matched": {
+            "type": "integer",
+            "title": "Products Matched"
+          },
+          "warehouses_created": {
+            "type": "integer",
+            "title": "Warehouses Created"
+          },
+          "warehouses_matched": {
+            "type": "integer",
+            "title": "Warehouses Matched"
+          },
+          "transactions_inserted": {
+            "type": "integer",
+            "title": "Transactions Inserted"
+          },
+          "quality_assessments_inserted": {
+            "type": "integer",
+            "title": "Quality Assessments Inserted"
+          },
+          "balances_updated": {
+            "type": "integer",
+            "title": "Balances Updated"
+          }
+        },
+        "type": "object",
+        "required": [
+          "farmers_created",
+          "farmers_matched",
+          "products_created",
+          "products_matched",
+          "warehouses_created",
+          "warehouses_matched",
+          "transactions_inserted",
+          "quality_assessments_inserted",
+          "balances_updated"
+        ],
+        "title": "IntegrationSummary"
+      },
+      "InventoryHealthReport": {
+        "properties": {
+          "report_type": {
+            "type": "string",
+            "title": "Report Type",
+            "default": "INVENTORY_HEALTH"
+          },
+          "generated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Generated At"
+          },
+          "healthy_count": {
+            "type": "integer",
+            "title": "Healthy Count"
+          },
+          "low_stock_count": {
+            "type": "integer",
+            "title": "Low Stock Count"
+          },
+          "critical_count": {
+            "type": "integer",
+            "title": "Critical Count"
+          },
+          "out_of_stock_count": {
+            "type": "integer",
+            "title": "Out Of Stock Count"
+          },
+          "overall_health_pct": {
+            "type": "number",
+            "title": "Overall Health Pct"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/InventoryStats"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "generated_at",
+          "healthy_count",
+          "low_stock_count",
+          "critical_count",
+          "out_of_stock_count",
+          "overall_health_pct",
+          "items"
+        ],
+        "title": "InventoryHealthReport"
+      },
+      "InventoryStats": {
+        "properties": {
+          "product_name": {
+            "type": "string",
+            "title": "Product Name"
+          },
+          "category": {
+            "type": "string",
+            "title": "Category"
+          },
+          "unit": {
+            "type": "string",
+            "title": "Unit"
+          },
+          "total_current_stock": {
+            "type": "number",
+            "title": "Total Current Stock"
+          },
+          "total_stock_in": {
+            "type": "number",
+            "title": "Total Stock In"
+          },
+          "total_stock_out": {
+            "type": "number",
+            "title": "Total Stock Out"
+          },
+          "total_damaged": {
+            "type": "number",
+            "title": "Total Damaged"
+          },
+          "available_stock": {
+            "type": "number",
+            "title": "Available Stock"
+          },
+          "reserved_stock": {
+            "type": "number",
+            "title": "Reserved Stock"
+          },
+          "expired_stock": {
+            "type": "number",
+            "title": "Expired Stock"
+          },
+          "reorder_level": {
+            "type": "number",
+            "title": "Reorder Level"
+          },
+          "stock_turnover_rate": {
+            "type": "number",
+            "title": "Stock Turnover Rate"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "product_name",
+          "category",
+          "unit",
+          "total_current_stock",
+          "total_stock_in",
+          "total_stock_out",
+          "total_damaged",
+          "available_stock",
+          "reserved_stock",
+          "expired_stock",
+          "reorder_level",
+          "stock_turnover_rate",
+          "status"
+        ],
+        "title": "InventoryStats"
+      },
+      "LivestockAttributesInput": {
+        "properties": {
+          "species": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Species",
+            "description": "Species (e.g. Cattle, Goat, Sheep, Pig)"
+          },
+          "breed": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Breed",
+            "description": "Breed name"
+          },
+          "age_months": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Age Months",
+            "description": "Age in months"
+          },
+          "weight_kg": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Weight Kg",
+            "description": "Live weight in kg"
+          },
+          "height_cm": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Height Cm",
+            "description": "Height at withers in cm"
+          },
+          "length_cm": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Length Cm",
+            "description": "Body length in cm"
+          },
+          "body_condition_score": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 5.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Body Condition Score",
+            "description": "BCS (1=emaciated, 5=obese)"
+          },
+          "health_status": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/HealthStatus"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "vaccination_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vaccination Status",
+            "description": "e.g. 'Up to date', 'Partial', 'None'"
+          },
+          "disease_indicators": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Disease Indicators",
+            "description": "Describe or 'None observed'"
+          },
+          "mobility_assessment": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mobility Assessment",
+            "description": "e.g. 'Normal', 'Slight limp', 'Lame'"
+          },
+          "feeding_condition": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Feeding Condition",
+            "description": "e.g. 'Well-fed', 'Thin', 'Emaciated'"
+          },
+          "reproductive_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reproductive Status",
+            "description": "e.g. 'Pregnant', 'Lactating', 'Dry', 'N/A'"
+          }
+        },
+        "type": "object",
+        "title": "LivestockAttributesInput",
+        "description": "Physical and health attributes for Livestock."
+      },
+      "LivestockDetailResponse": {
+        "properties": {
+          "species": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Species"
+          },
+          "breed": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Breed"
+          },
+          "age_months": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Age Months"
+          },
+          "weight_kg": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Weight Kg"
+          },
+          "height_cm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Height Cm"
+          },
+          "length_cm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Length Cm"
+          },
+          "body_condition_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Body Condition Score"
+          },
+          "health_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Health Status"
+          },
+          "vaccination_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vaccination Status"
+          },
+          "disease_indicators": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Disease Indicators"
+          },
+          "mobility_assessment": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mobility Assessment"
+          },
+          "feeding_condition": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Feeding Condition"
+          },
+          "reproductive_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reproductive Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "species",
+          "breed",
+          "age_months",
+          "weight_kg",
+          "height_cm",
+          "length_cm",
+          "body_condition_score",
+          "health_status",
+          "vaccination_status",
+          "disease_indicators",
+          "mobility_assessment",
+          "feeding_condition",
+          "reproductive_status"
+        ],
+        "title": "LivestockDetailResponse"
+      },
+      "LowStockAlertReport": {
+        "properties": {
+          "report_type": {
+            "type": "string",
+            "title": "Report Type",
+            "default": "LOW_STOCK_ALERT"
+          },
+          "generated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Generated At"
+          },
+          "alert_count": {
+            "type": "integer",
+            "title": "Alert Count"
+          },
+          "critical_count": {
+            "type": "integer",
+            "title": "Critical Count"
+          },
+          "alerts": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Alerts"
+          },
+          "recommended_actions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Recommended Actions"
+          }
+        },
+        "type": "object",
+        "required": [
+          "generated_at",
+          "alert_count",
+          "critical_count",
+          "alerts",
+          "recommended_actions"
+        ],
+        "title": "LowStockAlertReport"
+      },
+      "MappingSummary": {
+        "properties": {
+          "field_mapping": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Field Mapping"
+          },
+          "unmapped_columns": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Unmapped Columns"
+          },
+          "tables_targeted": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Tables Targeted"
+          }
+        },
+        "type": "object",
+        "required": [
+          "field_mapping",
+          "unmapped_columns",
+          "tables_targeted"
+        ],
+        "title": "MappingSummary"
+      },
+      "PoultryAttributesInput": {
+        "properties": {
+          "species": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Species",
+            "description": "Species (e.g. Chicken, Turkey, Duck, Guinea Fowl)"
+          },
+          "breed": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Breed",
+            "description": "Breed (e.g. Broiler, Layer, Kuroiler)"
+          },
+          "weight_kg": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Weight Kg",
+            "description": "Weight in kg"
+          },
+          "age_weeks": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Age Weeks",
+            "description": "Age in weeks"
+          },
+          "health_condition": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/HealthStatus"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "egg_production_rate_pct": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 100.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Egg Production Rate Pct",
+            "description": "Egg production rate % (layers only)"
+          },
+          "feather_condition": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Feather Condition",
+            "description": "e.g. 'Full, Glossy', 'Patchy', 'Bare patches'"
+          },
+          "disease_signs": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Disease Signs",
+            "description": "Describe or 'None observed'"
+          }
+        },
+        "type": "object",
+        "title": "PoultryAttributesInput",
+        "description": "Physical and health attributes for Poultry."
+      },
+      "PoultryDetailResponse": {
+        "properties": {
+          "species": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Species"
+          },
+          "breed": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Breed"
+          },
+          "weight_kg": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Weight Kg"
+          },
+          "age_weeks": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Age Weeks"
+          },
+          "health_condition": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Health Condition"
+          },
+          "egg_production_rate_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Egg Production Rate Pct"
+          },
+          "feather_condition": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Feather Condition"
+          },
+          "disease_signs": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Disease Signs"
+          }
+        },
+        "type": "object",
+        "required": [
+          "species",
+          "breed",
+          "weight_kg",
+          "age_weeks",
+          "health_condition",
+          "egg_production_rate_pct",
+          "feather_condition",
+          "disease_signs"
+        ],
+        "title": "PoultryDetailResponse"
+      },
+      "PrincipalRegistrationRequest": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "principal_type": {
+            "type": "string",
+            "enum": [
+              "ADMIN",
+              "MANAGER",
+              "EMPLOYEE",
+              "AI_AGENT",
+              "AUTOMATION_SERVICE",
+              "THIRD_PARTY",
+              "READ_ONLY"
+            ],
+            "title": "Principal Type"
+          },
+          "role": {
+            "type": "string",
+            "title": "Role"
+          },
+          "permissions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Permissions"
+          },
+          "organizationId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Organizationid"
+          },
+          "workspaceId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workspaceid"
+          },
+          "projectId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Projectid"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata"
+          },
+          "secret": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 16
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Secret"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "principal_type",
+          "role"
+        ],
+        "title": "PrincipalRegistrationRequest"
+      },
+      "ProduceAttributesInput": {
+        "properties": {
+          "weight_kg": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Weight Kg",
+            "description": "Weight in kilograms"
+          },
+          "length_cm": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Length Cm",
+            "description": "Length in centimetres"
+          },
+          "width_cm": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Width Cm",
+            "description": "Width in centimetres"
+          },
+          "height_cm": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Height Cm",
+            "description": "Height in centimetres"
+          },
+          "diameter_cm": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Diameter Cm",
+            "description": "Diameter in centimetres (if applicable)"
+          },
+          "color_quality": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Color Quality",
+            "description": "Color description (e.g. 'Bright Red', 'Pale Yellow')"
+          },
+          "freshness_score": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 10.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Freshness Score",
+            "description": "Freshness score out of 10"
+          },
+          "ripeness_level": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RipenessLevel"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "moisture_content_pct": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 100.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Moisture Content Pct",
+            "description": "Moisture content %"
+          },
+          "visible_damage_pct": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 100.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Visible Damage Pct",
+            "description": "% of surface with visible damage"
+          },
+          "pest_damage_pct": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 100.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pest Damage Pct",
+            "description": "% showing pest damage"
+          },
+          "disease_symptoms": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Disease Symptoms",
+            "description": "Describe disease symptoms or 'None'"
+          },
+          "estimated_shelf_life_days": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estimated Shelf Life Days",
+            "description": "Estimated shelf life in days"
+          }
+        },
+        "type": "object",
+        "title": "ProduceAttributesInput",
+        "description": "Physical attributes for Crops, Fruits, and Vegetables."
+      },
+      "ProduceDetailResponse": {
+        "properties": {
+          "weight_kg": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Weight Kg"
+          },
+          "length_cm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Length Cm"
+          },
+          "width_cm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Width Cm"
+          },
+          "height_cm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Height Cm"
+          },
+          "diameter_cm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Diameter Cm"
+          },
+          "color_quality": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Color Quality"
+          },
+          "freshness_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Freshness Score"
+          },
+          "ripeness_level": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ripeness Level"
+          },
+          "moisture_content_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Moisture Content Pct"
+          },
+          "visible_damage_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Visible Damage Pct"
+          },
+          "pest_damage_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pest Damage Pct"
+          },
+          "disease_symptoms": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Disease Symptoms"
+          },
+          "estimated_shelf_life_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estimated Shelf Life Days"
+          }
+        },
+        "type": "object",
+        "required": [
+          "weight_kg",
+          "length_cm",
+          "width_cm",
+          "height_cm",
+          "diameter_cm",
+          "color_quality",
+          "freshness_score",
+          "ripeness_level",
+          "moisture_content_pct",
+          "visible_damage_pct",
+          "pest_damage_pct",
+          "disease_symptoms",
+          "estimated_shelf_life_days"
+        ],
+        "title": "ProduceDetailResponse"
+      },
+      "ProductAvailabilityReport": {
+        "properties": {
+          "report_type": {
+            "type": "string",
+            "title": "Report Type",
+            "default": "PRODUCT_AVAILABILITY"
+          },
+          "generated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Generated At"
+          },
+          "available_products": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Available Products"
+          },
+          "out_of_stock": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Out Of Stock"
+          },
+          "low_stock": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Low Stock"
+          }
+        },
+        "type": "object",
+        "required": [
+          "generated_at",
+          "available_products",
+          "out_of_stock",
+          "low_stock"
+        ],
+        "title": "ProductAvailabilityReport"
+      },
+      "ProductCategory": {
+        "type": "string",
+        "enum": [
+          "Crop",
+          "Fruit",
+          "Vegetable",
+          "Livestock",
+          "Poultry",
+          "Fish",
+          "Other"
+        ],
+        "title": "ProductCategory"
+      },
+      "ProductCreate": {
+        "properties": {
+          "product_name": {
+            "type": "string",
+            "title": "Product Name",
+            "description": "Unique name of agricultural crop/product"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category",
+            "description": "Product category (e.g. Grains, Tubers, Vegetables)"
+          },
+          "unit": {
+            "type": "string",
+            "title": "Unit",
+            "description": "Base standard unit of measure (e.g. kg, bags, crates, liters)"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description",
+            "description": "Description of the product"
+          }
+        },
+        "type": "object",
+        "required": [
+          "product_name",
+          "unit"
+        ],
+        "title": "ProductCreate"
+      },
+      "ProductResponse": {
+        "properties": {
+          "product_name": {
+            "type": "string",
+            "title": "Product Name",
+            "description": "Unique name of agricultural crop/product"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category",
+            "description": "Product category (e.g. Grains, Tubers, Vegetables)"
+          },
+          "unit": {
+            "type": "string",
+            "title": "Unit",
+            "description": "Base standard unit of measure (e.g. kg, bags, crates, liters)"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description",
+            "description": "Description of the product"
+          },
+          "product_id": {
+            "type": "integer",
+            "title": "Product Id"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "product_name",
+          "unit",
+          "product_id",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "ProductResponse"
+      },
+      "PurchaseDecision": {
+        "properties": {
+          "recommendation": {
+            "type": "string",
+            "title": "Recommendation",
+            "description": "Buy / Buy with Caution / Do Not Buy"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason",
+            "description": "Detailed explanation for the recommendation"
+          }
+        },
+        "type": "object",
+        "required": [
+          "recommendation",
+          "reason"
+        ],
+        "title": "PurchaseDecision",
+        "description": "The purchase recommendation block."
+      },
+      "QualityAssessmentRequest": {
+        "properties": {
+          "product_name": {
+            "type": "string",
+            "title": "Product Name",
+            "description": "Name of the product being assessed"
+          },
+          "category": {
+            "$ref": "#/components/schemas/ProductCategory",
+            "description": "Product category"
+          },
+          "batch_number": {
+            "type": "string",
+            "title": "Batch Number",
+            "description": "Batch / lot identifier"
+          },
+          "farmer_supplier": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Farmer Supplier",
+            "description": "Farmer or supplier name"
+          },
+          "farmer_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Farmer Id",
+            "description": "Linked farmer ID (optional)"
+          },
+          "warehouse_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Warehouse Id",
+            "description": "Warehouse where item is located"
+          },
+          "assessed_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assessed By",
+            "description": "Name of inspector/assessor"
+          },
+          "assessment_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assessment Date"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes",
+            "description": "Additional observations"
+          },
+          "produce_attributes": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProduceAttributesInput"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "livestock_attributes": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LivestockAttributesInput"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "poultry_attributes": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PoultryAttributesInput"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "fish_attributes": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FishAttributesInput"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "product_name",
+          "category",
+          "batch_number"
+        ],
+        "title": "QualityAssessmentRequest",
+        "description": "Full input payload for a quality assessment.\nProvide exactly one of: produce_attributes, livestock_attributes,\npoultry_attributes, or fish_attributes \u2014 matching the declared category."
+      },
+      "QualityAssessmentResponse": {
+        "properties": {
+          "assessment_id": {
+            "type": "integer",
+            "title": "Assessment Id"
+          },
+          "batch_number": {
+            "type": "string",
+            "title": "Batch Number"
+          },
+          "product_name": {
+            "type": "string",
+            "title": "Product Name"
+          },
+          "category": {
+            "type": "string",
+            "title": "Category"
+          },
+          "farmer_supplier": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Farmer Supplier"
+          },
+          "farmer_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Farmer Id"
+          },
+          "warehouse_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Warehouse Id"
+          },
+          "assessed_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assessed By"
+          },
+          "assessment_date": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Assessment Date"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "scoring": {
+            "$ref": "#/components/schemas/QualityScoring"
+          },
+          "purchase_decision": {
+            "$ref": "#/components/schemas/PurchaseDecision"
+          },
+          "produce_detail": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProduceDetailResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "livestock_detail": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LivestockDetailResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "poultry_detail": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PoultryDetailResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "fish_detail": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FishDetailResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "assessment_id",
+          "batch_number",
+          "product_name",
+          "category",
+          "farmer_supplier",
+          "farmer_id",
+          "warehouse_id",
+          "assessed_by",
+          "assessment_date",
+          "notes",
+          "scoring",
+          "purchase_decision",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "QualityAssessmentResponse",
+        "description": "Full structured response \u2014 suitable for direct database storage and API return."
+      },
+      "QualityScoring": {
+        "properties": {
+          "quality_score": {
+            "type": "number",
+            "title": "Quality Score",
+            "description": "Overall quality score 0\u2013100"
+          },
+          "market_readiness_score": {
+            "type": "number",
+            "title": "Market Readiness Score",
+            "description": "Market readiness score 0\u2013100"
+          },
+          "estimated_market_value_ghs": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estimated Market Value Ghs",
+            "description": "Estimated value in Ghana Cedis"
+          },
+          "risk_level": {
+            "type": "string",
+            "title": "Risk Level",
+            "description": "Low / Medium / High"
+          },
+          "grade_classification": {
+            "type": "string",
+            "title": "Grade Classification",
+            "description": "Premium / Grade A / Grade B / Grade C / Reject"
+          }
+        },
+        "type": "object",
+        "required": [
+          "quality_score",
+          "market_readiness_score",
+          "risk_level",
+          "grade_classification"
+        ],
+        "title": "QualityScoring",
+        "description": "The computed scoring block."
+      },
+      "ReportListItem": {
+        "properties": {
+          "report_id": {
+            "type": "integer",
+            "title": "Report Id"
+          },
+          "session_id": {
+            "type": "integer",
+            "title": "Session Id"
+          },
+          "report_type": {
+            "type": "string",
+            "title": "Report Type"
+          },
+          "report_title": {
+            "type": "string",
+            "title": "Report Title"
+          },
+          "generated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Generated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "report_id",
+          "session_id",
+          "report_type",
+          "report_title",
+          "generated_at"
+        ],
+        "title": "ReportListItem"
+      },
+      "RipenessLevel": {
+        "type": "string",
+        "enum": [
+          "Unripe",
+          "Nearly Ripe",
+          "Ripe",
+          "Overripe"
+        ],
+        "title": "RipenessLevel"
+      },
+      "SessionDetailResponse": {
+        "properties": {
+          "session_id": {
+            "type": "integer",
+            "title": "Session Id"
+          },
+          "file_name": {
+            "type": "string",
+            "title": "File Name"
+          },
+          "data_source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data Source"
+          },
+          "detected_schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detected Schema"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "total_rows": {
+            "type": "integer",
+            "title": "Total Rows"
+          },
+          "total_columns": {
+            "type": "integer",
+            "title": "Total Columns"
+          },
+          "missing_value_count": {
+            "type": "integer",
+            "title": "Missing Value Count"
+          },
+          "duplicate_row_count": {
+            "type": "integer",
+            "title": "Duplicate Row Count"
+          },
+          "farmers_created": {
+            "type": "integer",
+            "title": "Farmers Created"
+          },
+          "farmers_matched": {
+            "type": "integer",
+            "title": "Farmers Matched"
+          },
+          "products_created": {
+            "type": "integer",
+            "title": "Products Created"
+          },
+          "products_matched": {
+            "type": "integer",
+            "title": "Products Matched"
+          },
+          "warehouses_created": {
+            "type": "integer",
+            "title": "Warehouses Created"
+          },
+          "warehouses_matched": {
+            "type": "integer",
+            "title": "Warehouses Matched"
+          },
+          "transactions_inserted": {
+            "type": "integer",
+            "title": "Transactions Inserted"
+          },
+          "balances_updated": {
+            "type": "integer",
+            "title": "Balances Updated"
+          },
+          "validation_passed": {
+            "type": "boolean",
+            "title": "Validation Passed"
+          },
+          "duplicate_ids_found": {
+            "type": "integer",
+            "title": "Duplicate Ids Found"
+          },
+          "constraint_violations": {
+            "type": "integer",
+            "title": "Constraint Violations"
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Started At"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "error_summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Summary"
+          }
+        },
+        "type": "object",
+        "required": [
+          "session_id",
+          "file_name",
+          "data_source",
+          "detected_schema",
+          "status",
+          "total_rows",
+          "total_columns",
+          "missing_value_count",
+          "duplicate_row_count",
+          "farmers_created",
+          "farmers_matched",
+          "products_created",
+          "products_matched",
+          "warehouses_created",
+          "warehouses_matched",
+          "transactions_inserted",
+          "balances_updated",
+          "validation_passed",
+          "duplicate_ids_found",
+          "constraint_violations",
+          "started_at",
+          "completed_at",
+          "error_summary"
+        ],
+        "title": "SessionDetailResponse"
+      },
+      "SessionListItem": {
+        "properties": {
+          "session_id": {
+            "type": "integer",
+            "title": "Session Id"
+          },
+          "file_name": {
+            "type": "string",
+            "title": "File Name"
+          },
+          "detected_schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detected Schema"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "total_rows": {
+            "type": "integer",
+            "title": "Total Rows"
+          },
+          "transactions_inserted": {
+            "type": "integer",
+            "title": "Transactions Inserted"
+          },
+          "records_failed": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Records Failed"
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Started At"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "session_id",
+          "file_name",
+          "detected_schema",
+          "status",
+          "total_rows",
+          "transactions_inserted",
+          "records_failed",
+          "started_at",
+          "completed_at"
+        ],
+        "title": "SessionListItem"
+      },
+      "StockAdjustmentCreate": {
+        "properties": {
+          "farmer_id": {
+            "type": "integer",
+            "title": "Farmer Id"
+          },
+          "product_id": {
+            "type": "integer",
+            "title": "Product Id"
+          },
+          "warehouse_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Warehouse Id"
+          },
+          "quantity": {
+            "type": "number",
+            "title": "Quantity",
+            "description": "Quantity adjustment amount (positive to add, negative to deduct)"
+          },
+          "unit": {
+            "type": "string",
+            "title": "Unit"
+          },
+          "reference_note": {
+            "type": "string",
+            "title": "Reference Note",
+            "description": "Reason/Reference note for the adjustment"
+          },
+          "transaction_type": {
+            "type": "string",
+            "title": "Transaction Type",
+            "description": "Must be either DAMAGE, RETURN, ADJUSTMENT, or TRANSFER",
+            "default": "ADJUSTMENT"
+          }
+        },
+        "type": "object",
+        "required": [
+          "farmer_id",
+          "product_id",
+          "quantity",
+          "unit",
+          "reference_note"
+        ],
+        "title": "StockAdjustmentCreate"
+      },
+      "StockAlertResponse": {
+        "properties": {
+          "alert_id": {
+            "type": "integer",
+            "title": "Alert Id"
+          },
+          "farmer_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Farmer Id"
+          },
+          "product_id": {
+            "type": "integer",
+            "title": "Product Id"
+          },
+          "warehouse_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Warehouse Id"
+          },
+          "alert_type": {
+            "type": "string",
+            "title": "Alert Type"
+          },
+          "alert_message": {
+            "type": "string",
+            "title": "Alert Message"
+          },
+          "is_resolved": {
+            "type": "boolean",
+            "title": "Is Resolved"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "resolved_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolved At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "alert_id",
+          "farmer_id",
+          "product_id",
+          "warehouse_id",
+          "alert_type",
+          "alert_message",
+          "is_resolved",
+          "created_at",
+          "resolved_at"
+        ],
+        "title": "StockAlertResponse"
+      },
+      "StockBalanceResponse": {
+        "properties": {
+          "balance_id": {
+            "type": "integer",
+            "title": "Balance Id"
+          },
+          "farmer_id": {
+            "type": "integer",
+            "title": "Farmer Id"
+          },
+          "product_id": {
+            "type": "integer",
+            "title": "Product Id"
+          },
+          "warehouse_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Warehouse Id"
+          },
+          "opening_stock": {
+            "type": "number",
+            "title": "Opening Stock"
+          },
+          "current_stock": {
+            "type": "number",
+            "title": "Current Stock"
+          },
+          "reorder_level": {
+            "type": "number",
+            "title": "Reorder Level"
+          },
+          "last_updated": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Last Updated"
+          }
+        },
+        "type": "object",
+        "required": [
+          "balance_id",
+          "farmer_id",
+          "product_id",
+          "warehouse_id",
+          "opening_stock",
+          "current_stock",
+          "reorder_level",
+          "last_updated"
+        ],
+        "title": "StockBalanceResponse"
+      },
+      "StockSummaryReport": {
+        "properties": {
+          "report_type": {
+            "type": "string",
+            "title": "Report Type",
+            "default": "STOCK_SUMMARY"
+          },
+          "generated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Generated At"
+          },
+          "total_products": {
+            "type": "integer",
+            "title": "Total Products"
+          },
+          "total_farmers": {
+            "type": "integer",
+            "title": "Total Farmers"
+          },
+          "total_warehouses": {
+            "type": "integer",
+            "title": "Total Warehouses"
+          },
+          "total_transactions": {
+            "type": "integer",
+            "title": "Total Transactions"
+          },
+          "inventory": {
+            "items": {
+              "$ref": "#/components/schemas/InventoryStats"
+            },
+            "type": "array",
+            "title": "Inventory"
+          }
+        },
+        "type": "object",
+        "required": [
+          "generated_at",
+          "total_products",
+          "total_farmers",
+          "total_warehouses",
+          "total_transactions",
+          "inventory"
+        ],
+        "title": "StockSummaryReport"
+      },
+      "StockTransactionCreate": {
+        "properties": {
+          "farmer_id": {
+            "type": "integer",
+            "title": "Farmer Id",
+            "description": "ID of the associated farmer"
+          },
+          "product_id": {
+            "type": "integer",
+            "title": "Product Id",
+            "description": "ID of the product being moved"
+          },
+          "warehouse_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Warehouse Id",
+            "description": "ID of warehouse location (optional)"
+          },
+          "quantity": {
+            "type": "number",
+            "title": "Quantity",
+            "description": "Quantity of product moved"
+          },
+          "unit": {
+            "type": "string",
+            "title": "Unit",
+            "description": "Unit of measurement used in the transaction"
+          },
+          "reference_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference Note",
+            "description": "Reference notes (e.g., harvest ID, sales invoice)"
+          },
+          "transaction_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Transaction Date",
+            "description": "Date of transaction"
+          }
+        },
+        "type": "object",
+        "required": [
+          "farmer_id",
+          "product_id",
+          "quantity",
+          "unit"
+        ],
+        "title": "StockTransactionCreate"
+      },
+      "StockTransactionResponse": {
+        "properties": {
+          "farmer_id": {
+            "type": "integer",
+            "title": "Farmer Id",
+            "description": "ID of the associated farmer"
+          },
+          "product_id": {
+            "type": "integer",
+            "title": "Product Id",
+            "description": "ID of the product being moved"
+          },
+          "warehouse_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Warehouse Id",
+            "description": "ID of warehouse location (optional)"
+          },
+          "quantity": {
+            "type": "number",
+            "title": "Quantity",
+            "description": "Quantity of product moved"
+          },
+          "unit": {
+            "type": "string",
+            "title": "Unit",
+            "description": "Unit of measurement used in the transaction"
+          },
+          "reference_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference Note",
+            "description": "Reference notes (e.g., harvest ID, sales invoice)"
+          },
+          "transaction_id": {
+            "type": "integer",
+            "title": "Transaction Id"
+          },
+          "transaction_type": {
+            "type": "string",
+            "title": "Transaction Type"
+          },
+          "transaction_date": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Transaction Date"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "farmer_id",
+          "product_id",
+          "quantity",
+          "unit",
+          "transaction_id",
+          "transaction_type",
+          "transaction_date",
+          "created_at"
+        ],
+        "title": "StockTransactionResponse"
+      },
+      "TaskCreateRequest": {
+        "properties": {
+          "request": {
+            "$ref": "#/components/schemas/GatewayRequestEnvelope"
+          },
+          "priority": {
+            "type": "string",
+            "enum": [
+              "low",
+              "normal",
+              "high"
+            ],
+            "title": "Priority",
+            "default": "normal"
+          },
+          "taskType": {
+            "type": "string",
+            "enum": [
+              "BACKGROUND_JOB",
+              "LONG_RUNNING_TASK",
+              "BATCH_JOB"
+            ],
+            "title": "Tasktype",
+            "default": "BACKGROUND_JOB"
+          }
+        },
+        "type": "object",
+        "required": [
+          "request"
+        ],
+        "title": "TaskCreateRequest"
+      },
+      "TokenRequest": {
+        "properties": {
+          "principalId": {
+            "type": "string",
+            "title": "Principalid"
+          },
+          "clientSecret": {
+            "type": "string",
+            "title": "Clientsecret"
+          },
+          "grantType": {
+            "type": "string",
+            "enum": [
+              "client_credentials",
+              "password",
+              "service_token"
+            ],
+            "title": "Granttype",
+            "default": "client_credentials"
+          },
+          "scopes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Scopes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "principalId",
+          "clientSecret"
+        ],
+        "title": "TokenRequest"
+      },
+      "ToolExecutionRequest": {
+        "properties": {
+          "toolName": {
+            "type": "string",
+            "title": "Toolname"
+          },
+          "arguments": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Arguments"
+          },
+          "context": {
+            "$ref": "#/components/schemas/GatewayContextEnvelope"
+          }
+        },
+        "type": "object",
+        "required": [
+          "toolName"
+        ],
+        "title": "ToolExecutionRequest"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      },
+      "ValidationResult": {
+        "properties": {
+          "passed": {
+            "type": "boolean",
+            "title": "Passed"
+          },
+          "duplicate_ids_found": {
+            "type": "integer",
+            "title": "Duplicate Ids Found"
+          },
+          "constraint_violations": {
+            "type": "integer",
+            "title": "Constraint Violations"
+          },
+          "warehouse_mismatches": {
+            "type": "integer",
+            "title": "Warehouse Mismatches"
+          },
+          "quantity_anomalies": {
+            "type": "integer",
+            "title": "Quantity Anomalies"
+          },
+          "issues": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Issues"
+          }
+        },
+        "type": "object",
+        "required": [
+          "passed",
+          "duplicate_ids_found",
+          "constraint_violations",
+          "warehouse_mismatches",
+          "quantity_anomalies",
+          "issues"
+        ],
+        "title": "ValidationResult"
+      },
+      "WarehouseCreate": {
+        "properties": {
+          "warehouse_name": {
+            "type": "string",
+            "title": "Warehouse Name",
+            "description": "Unique name of storage location/warehouse"
+          },
+          "region": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Region",
+            "description": "Region of warehouse"
+          },
+          "district": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "District",
+            "description": "District of warehouse"
+          },
+          "capacity": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Capacity",
+            "description": "Storage capacity in base units"
+          }
+        },
+        "type": "object",
+        "required": [
+          "warehouse_name"
+        ],
+        "title": "WarehouseCreate"
+      },
+      "WarehouseResponse": {
+        "properties": {
+          "warehouse_name": {
+            "type": "string",
+            "title": "Warehouse Name",
+            "description": "Unique name of storage location/warehouse"
+          },
+          "region": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Region",
+            "description": "Region of warehouse"
+          },
+          "district": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "District",
+            "description": "District of warehouse"
+          },
+          "capacity": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Capacity",
+            "description": "Storage capacity in base units"
+          },
+          "warehouse_id": {
+            "type": "integer",
+            "title": "Warehouse Id"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "warehouse_name",
+          "warehouse_id",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "WarehouseResponse"
+      },
+      "WebhookRegistrationRequest": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "targetUrl": {
+            "type": "string",
+            "maxLength": 2083,
+            "minLength": 1,
+            "format": "uri",
+            "title": "Targeturl"
+          },
+          "eventTypes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Eventtypes"
+          },
+          "secretKey": {
+            "type": "string",
+            "minLength": 16,
+            "title": "Secretkey"
+          },
+          "headers": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Headers"
+          },
+          "timeoutSeconds": {
+            "type": "integer",
+            "maximum": 60.0,
+            "minimum": 1.0,
+            "title": "Timeoutseconds",
+            "default": 10
+          },
+          "maxRetries": {
+            "type": "integer",
+            "maximum": 10.0,
+            "minimum": 0.0,
+            "title": "Maxretries",
+            "default": 3
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "targetUrl",
+          "eventTypes",
+          "secretKey"
+        ],
+        "title": "WebhookRegistrationRequest"
+      }
+    }
+  }
+}
