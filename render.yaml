@@ -9,7 +9,7 @@ services:
       - key: PYTHON_VERSION
         value: 3.11.0
       - key: ENVIRONMENT
-        value: production
+        value: development
       - key: DATABASE_URL
         sync: false
       - key: GATEWAY_SECRET_KEY
