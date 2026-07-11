@@ -1,16 +1,17 @@
-import os
 import re
-import difflib
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import List, Dict, Any, Tuple, Optional
+from typing import Any, Dict, List, Optional, Tuple
+
 import pandas as pd
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import SQLAlchemyError
 
-from app.config import DATA_RAW_DIR, DATA_ERROR_LOGS_DIR, DATA_PROCESSED_DIR, ALLOW_NEGATIVE_STOCK
+from app.config import DATA_ERROR_LOGS_DIR, DATA_RAW_DIR
+from app.models.stock_models import Farmer, Product
 from app.repositories.stock_repo import StockRepository
 from app.services.stock_service import StockService
-from app.models.stock_models import Farmer, Product, Warehouse
+
 
 class ImportService:
     def __init__(self, db: Session):
@@ -23,13 +24,15 @@ class ImportService:
         new_cols = []
         for col in df.columns:
             c = str(col).strip().lower()
-            c = re.sub(r'[^a-z0-9_]', '_', c)
-            c = re.sub(r'_+', '_', c).strip('_')
+            c = re.sub(r"[^a-z0-9_]", "_", c)
+            c = re.sub(r"_+", "_", c).strip("_")
             new_cols.append(c)
         df.columns = new_cols
         return df
 
-    def find_or_suggest_farmer(self, name: str) -> Tuple[Optional[Farmer], Optional[str]]:
+    def find_or_suggest_farmer(
+        self, name: str
+    ) -> Tuple[Optional[Farmer], Optional[str]]:
         """
         Attempts to find a farmer by name.
         If a similar name is found, returns (None, suggestion_msg).
@@ -48,7 +51,7 @@ class ImportService:
             # If extremely high confidence, merge case-insensitively
             if score > 0.95:
                 return best_match, None
-            
+
             suggestion = (
                 f"Fuzzy match detected: '{name_clean}' is similar to existing farmer "
                 f"'{best_match.full_name}' (confidence {score:.2f}). Direct merge skipped."
@@ -57,7 +60,9 @@ class ImportService:
 
         return None, None
 
-    def find_or_suggest_product(self, name: str) -> Tuple[Optional[Product], Optional[str]]:
+    def find_or_suggest_product(
+        self, name: str
+    ) -> Tuple[Optional[Product], Optional[str]]:
         """Identical logic for products."""
         name_clean = name.strip()
         exact = self.repo.get_product_by_name(name_clean)
@@ -77,18 +82,33 @@ class ImportService:
 
         return None, None
 
-    def process_generic_transaction_row(self, row: Dict[str, Any], file_name: str, row_idx: int) -> Tuple[bool, str]:
+    def process_generic_transaction_row(
+        self, row: Dict[str, Any], file_name: str, row_idx: int
+    ) -> Tuple[bool, str]:
         """Validates and imports a single row containing a stock movement transaction."""
         try:
             # 1. Extract and validate critical fields
             farmer_name = row.get("farmer_name") or row.get("farmer")
-            product_name = row.get("product_name") or row.get("product") or row.get("crop") or row.get("commodity")
-            qty_raw = row.get("quantity") or row.get("qty") or row.get("production") or row.get("amount")
+            product_name = (
+                row.get("product_name")
+                or row.get("product")
+                or row.get("crop")
+                or row.get("commodity")
+            )
+            qty_raw = (
+                row.get("quantity")
+                or row.get("qty")
+                or row.get("production")
+                or row.get("amount")
+            )
             unit_raw = row.get("unit") or row.get("units")
             tx_type = row.get("transaction_type") or row.get("type") or "STOCK_IN"
-            
+
             if not farmer_name or not product_name or qty_raw is None or not unit_raw:
-                return False, "Missing critical columns (farmer, product, quantity, or unit)"
+                return (
+                    False,
+                    "Missing critical columns (farmer, product, quantity, or unit)",
+                )
 
             # Parse quantity
             try:
@@ -98,7 +118,10 @@ class ImportService:
 
             # Suspicious inputs check: negative quantities for non-adjustment types
             if qty < 0 and str(tx_type).upper() != "ADJUSTMENT":
-                return False, f"Negative quantity {qty} not allowed for transaction type {tx_type}"
+                return (
+                    False,
+                    f"Negative quantity {qty} not allowed for transaction type {tx_type}",
+                )
 
             # 2. Fuzzy match checks
             farmer, farmer_suggestion = self.find_or_suggest_farmer(str(farmer_name))
@@ -109,22 +132,29 @@ class ImportService:
                 farmer = self.repo.create_farmer(
                     full_name=str(farmer_name),
                     region=row.get("region"),
-                    district=row.get("district")
+                    district=row.get("district"),
                 )
 
-            product, product_suggestion = self.find_or_suggest_product(str(product_name))
+            product, product_suggestion = self.find_or_suggest_product(
+                str(product_name)
+            )
             if product_suggestion:
                 return False, product_suggestion
             if not product:
                 product = self.repo.create_product(
                     product_name=str(product_name),
                     category=row.get("category") or "Crops",
-                    unit=str(unit_raw)
+                    unit=str(unit_raw),
                 )
 
             # Warehouse lookup
             warehouse_id = None
-            warehouse_name = row.get("warehouse_name") or row.get("warehouse") or row.get("market") or row.get("location")
+            warehouse_name = (
+                row.get("warehouse_name")
+                or row.get("warehouse")
+                or row.get("market")
+                or row.get("location")
+            )
             if warehouse_name:
                 warehouse_name_str = str(warehouse_name).strip()
                 warehouse = self.repo.get_warehouse_by_name(warehouse_name_str)
@@ -132,13 +162,18 @@ class ImportService:
                     warehouse = self.repo.create_warehouse(
                         warehouse_name=warehouse_name_str,
                         region=row.get("region"),
-                        district=row.get("district")
+                        district=row.get("district"),
                     )
                 warehouse_id = warehouse.warehouse_id
 
             # Date parsing
-            date_raw = row.get("date") or row.get("transaction_date") or row.get("market_day") or row.get("year")
-            tx_date = datetime.utcnow()
+            date_raw = (
+                row.get("date")
+                or row.get("transaction_date")
+                or row.get("market_day")
+                or row.get("year")
+            )
+            tx_date = datetime.now(timezone.utc)
             if date_raw:
                 # Try common formats
                 for fmt in ("%Y-%m-%d", "%d-%m-%Y", "%m/%d/%Y", "%Y"):
@@ -148,7 +183,11 @@ class ImportService:
                     except ValueError:
                         continue
 
-            note = row.get("reference_note") or row.get("note") or f"Imported from {file_name}"
+            note = (
+                row.get("reference_note")
+                or row.get("note")
+                or f"Imported from {file_name}"
+            )
             if "price" in row:
                 note += f" | Price: {row['price']}"
 
@@ -161,17 +200,17 @@ class ImportService:
                 quantity=qty,
                 unit=str(unit_raw),
                 transaction_date=tx_date,
-                reference_note=note
+                reference_note=note,
             )
             return True, "Success"
 
-        except Exception as e:
+        except (ValueError, TypeError, SQLAlchemyError) as e:
             return False, str(e)
 
     def import_dataset(self, file_path: Path) -> Dict[str, Any]:
         """Reads, normalizes, cleans, and imports a dataset from CSV or Excel."""
         file_name = file_path.name
-        
+
         # 1. Read file
         try:
             if file_path.suffix.lower() == ".csv":
@@ -183,20 +222,20 @@ class ImportService:
                     "status": "FAILED",
                     "processed": 0,
                     "failed": 0,
-                    "error": f"Unsupported file extension: {file_path.suffix}"
+                    "error": f"Unsupported file extension: {file_path.suffix}",
                 }
-        except Exception as e:
+        except (pd.errors.EmptyDataError, OSError, ValueError) as e:
             return {
                 "status": "FAILED",
                 "processed": 0,
                 "failed": 0,
-                "error": f"Error opening file: {str(e)}"
+                "error": f"Error opening file: {str(e)}",
             }
 
         # 2. Normalize headers
         df = self.normalize_headers(df)
         df = df.where(pd.notnull(df), None)  # Replace NaN with None
-        
+
         # Remove exact duplicates
         initial_rows = len(df)
         df = df.drop_duplicates()
@@ -214,14 +253,14 @@ class ImportService:
 
         for idx, row in df.iterrows():
             row_dict = row.to_dict()
-            
+
             # Map columns for historical datasets to make them importable as transaction flows
             if is_production_srid:
                 # "Crop production Data SRID" or "production estimates"
                 # Map commodity/crop to product
                 crop_name = row_dict.get("crop") or row_dict.get("commodity")
                 prod_qty = row_dict.get("production_mt") or row_dict.get("production")
-                
+
                 # We seed this as stock_in for a regional cooperative
                 region = row_dict.get("region", "Ghana")
                 district = row_dict.get("district", "Unknown District")
@@ -231,13 +270,13 @@ class ImportService:
                 row_dict["unit"] = "ton"
                 row_dict["transaction_type"] = "STOCK_IN"
                 row_dict["location"] = f"{district} District Storage"
-                
+
             elif is_commodity_price:
                 # "Commodity prices"
                 crop_name = row_dict.get("commodity")
                 price = row_dict.get("price")
                 market = row_dict.get("market") or "Ghana Market"
-                
+
                 row_dict["farmer_name"] = "Market Supplier"
                 row_dict["product_name"] = crop_name
                 row_dict["quantity"] = 1.0  # Seed value
@@ -247,7 +286,9 @@ class ImportService:
                 row_dict["note"] = f"Historical retail price: GHS {price}"
 
             # Process the row
-            success, reason = self.process_generic_transaction_row(row_dict, file_name, idx)
+            success, reason = self.process_generic_transaction_row(
+                row_dict, file_name, idx
+            )
             if success:
                 records_processed += 1
             else:
@@ -278,7 +319,7 @@ class ImportService:
             status=status,
             processed=records_processed,
             failed=records_failed,
-            summary=summary
+            summary=summary,
         )
 
         return {
@@ -286,7 +327,7 @@ class ImportService:
             "imported_count": records_processed,
             "failed_count": records_failed,
             "error_log_file": error_log_file,
-            "message": summary
+            "message": summary,
         }
 
     def scan_and_import_raw_directory(self) -> List[Dict[str, Any]]:
@@ -297,11 +338,8 @@ class ImportService:
         files = []
         for ext in extensions:
             files.extend(list(Path(DATA_RAW_DIR).glob(ext)))
-            
+
         for f in files:
             res = self.import_dataset(f)
-            results.append({
-                "file": f.name,
-                "result": res
-            })
+            results.append({"file": f.name, "result": res})
         return results

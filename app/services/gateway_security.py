@@ -4,7 +4,7 @@ import hmac
 import json
 import secrets
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 import jwt
@@ -16,12 +16,12 @@ from app.config import (
     GATEWAY_BURST_LIMIT,
     GATEWAY_JWT_ALGORITHM,
     GATEWAY_JWT_EXPIRES_MINUTES,
-    GATEWAY_REQUEST_BODY_LIMIT_BYTES,
-    GATEWAY_REQUEST_SIGNING_SECRET,
-    GATEWAY_SECRET_KEY,
     GATEWAY_RATE_LIMIT_DAY,
     GATEWAY_RATE_LIMIT_HOUR,
     GATEWAY_RATE_LIMIT_MINUTE,
+    GATEWAY_REQUEST_BODY_LIMIT_BYTES,
+    GATEWAY_REQUEST_SIGNING_SECRET,
+    GATEWAY_SECRET_KEY,
 )
 from app.models.gateway_models import (
     GatewayApiKey,
@@ -30,8 +30,11 @@ from app.models.gateway_models import (
     GatewayPrincipal,
     GatewayRateLimitBucket,
 )
-from app.schemas.gateway_schemas import ApiKeyCreateRequest, PrincipalRegistrationRequest, TokenRequest
-
+from app.schemas.gateway_schemas import (
+    ApiKeyCreateRequest,
+    PrincipalRegistrationRequest,
+    TokenRequest,
+)
 
 ROLE_PERMISSIONS: Dict[str, List[str]] = {
     "ADMIN": ["*"],
@@ -79,18 +82,41 @@ ROLE_PERMISSIONS: Dict[str, List[str]] = {
         "quality:read",
         "integration:read",
     ],
-    "THIRD_PARTY": ["gateway:read", "gateway:write", "events:publish", "files:read", "stock:read"],
-    "READ_ONLY": ["gateway:read", "files:read", "stock:read", "quality:read", "integration:read", "tasks:read"],
+    "THIRD_PARTY": [
+        "gateway:read",
+        "gateway:write",
+        "events:publish",
+        "files:read",
+        "stock:read",
+    ],
+    "READ_ONLY": [
+        "gateway:read",
+        "files:read",
+        "stock:read",
+        "quality:read",
+        "integration:read",
+        "tasks:read",
+    ],
 }
 
 
 class GatewayAPIError(HTTPException):
-    def __init__(self, status_code: int, code: str, message: str, detail: Optional[Any] = None):
-        super().__init__(status_code=status_code, detail={"code": code, "message": message, "detail": detail})
+    def __init__(
+        self,
+        status_code: int,
+        code: str,
+        message: str,
+        detail: Optional[Any] = None,
+    ):
+        super().__init__(
+            status_code=status_code,
+            detail={"code": code, "message": message, "detail": detail},
+        )
 
 
 def utcnow() -> datetime:
-    return datetime.utcnow()
+    """Return current UTC time as a timezone-aware datetime object."""
+    return datetime.now(timezone.utc)
 
 
 def _json_loads(value: Optional[str], default: Any) -> Any:
@@ -135,7 +161,9 @@ def serialize_permissions(role: str, custom_permissions: List[str]) -> str:
     return json.dumps(permissions)
 
 
-def build_permission_list(principal: GatewayPrincipal, scopes: Optional[List[str]] = None) -> List[str]:
+def build_permission_list(
+    principal: GatewayPrincipal, scopes: Optional[List[str]] = None
+) -> List[str]:
     permissions = set(_json_loads(principal.permissions_json, []))
     if scopes:
         permissions.update(scopes)
@@ -143,7 +171,9 @@ def build_permission_list(principal: GatewayPrincipal, scopes: Optional[List[str
 
 
 class GatewaySecurityService:
-    def create_principal(self, db: Session, payload: PrincipalRegistrationRequest) -> Tuple[GatewayPrincipal, str]:
+    def create_principal(
+        self, db: Session, payload: PrincipalRegistrationRequest
+    ) -> Tuple[GatewayPrincipal, str]:
         secret = payload.secret or generate_secret("agw_client")
         principal = GatewayPrincipal(
             name=payload.name,
@@ -160,13 +190,31 @@ class GatewaySecurityService:
         db.add(principal)
         db.commit()
         db.refresh(principal)
-        self._audit(db, principal.id, "AUTH", "principal.create", principal.principal_id, "SUCCESS", {})
+        self._audit(
+            db,
+            principal.id,
+            "AUTH",
+            "principal.create",
+            principal.principal_id,
+            "SUCCESS",
+            {},
+        )
         return principal, secret
 
-    def create_api_key(self, db: Session, payload: ApiKeyCreateRequest) -> Tuple[GatewayApiKey, str, GatewayPrincipal]:
-        principal = db.query(GatewayPrincipal).filter(GatewayPrincipal.principal_id == payload.principal_id).first()
+    def create_api_key(
+        self, db: Session, payload: ApiKeyCreateRequest
+    ) -> Tuple[GatewayApiKey, str, GatewayPrincipal]:
+        principal = (
+            db.query(GatewayPrincipal)
+            .filter(GatewayPrincipal.principal_id == payload.principal_id)
+            .first()
+        )
         if not principal or not principal.is_active:
-            raise GatewayAPIError(status.HTTP_404_NOT_FOUND, "PRINCIPAL_NOT_FOUND", "Principal was not found or is inactive.")
+            raise GatewayAPIError(
+                status.HTTP_404_NOT_FOUND,
+                "PRINCIPAL_NOT_FOUND",
+                "Principal was not found or is inactive.",
+            )
 
         plain_secret = generate_secret("agw_key")
         api_key = GatewayApiKey(
@@ -177,18 +225,40 @@ class GatewaySecurityService:
             hashed_key=hash_secret(plain_secret),
             scopes_json=json.dumps(payload.scopes),
             metadata_json=json.dumps(payload.metadata),
-            expires_at=utcnow() + timedelta(days=payload.expires_in_days or GATEWAY_API_KEY_EXPIRY_DAYS),
+            expires_at=utcnow()
+            + timedelta(days=payload.expires_in_days or GATEWAY_API_KEY_EXPIRY_DAYS),
         )
         db.add(api_key)
         db.commit()
         db.refresh(api_key)
-        self._audit(db, principal.id, "AUTH", "apikey.create", api_key.key_id, "SUCCESS", {"label": payload.label})
+        self._audit(
+            db,
+            principal.id,
+            "AUTH",
+            "apikey.create",
+            api_key.key_id,
+            "SUCCESS",
+            {"label": payload.label},
+        )
         return api_key, plain_secret, principal
 
-    def rotate_api_key(self, db: Session, key_id: str) -> Tuple[GatewayApiKey, GatewayApiKey, str]:
-        existing = db.query(GatewayApiKey).filter(GatewayApiKey.key_id == key_id, GatewayApiKey.is_active.is_(True)).first()
+    def rotate_api_key(
+        self, db: Session, key_id: str
+    ) -> Tuple[GatewayApiKey, GatewayApiKey, str]:
+        existing = (
+            db.query(GatewayApiKey)
+            .filter(
+                GatewayApiKey.key_id == key_id,
+                GatewayApiKey.is_active.is_(True),
+            )
+            .first()
+        )
         if not existing:
-            raise GatewayAPIError(status.HTTP_404_NOT_FOUND, "API_KEY_NOT_FOUND", "API key was not found.")
+            raise GatewayAPIError(
+                status.HTTP_404_NOT_FOUND,
+                "API_KEY_NOT_FOUND",
+                "API key was not found.",
+            )
 
         existing.is_active = False
         plain_secret = generate_secret("agw_key")
@@ -209,11 +279,25 @@ class GatewaySecurityService:
         return existing, replacement, plain_secret
 
     def issue_token(self, db: Session, payload: TokenRequest) -> Dict[str, Any]:
-        principal = db.query(GatewayPrincipal).filter(GatewayPrincipal.principal_id == payload.principal_id).first()
+        principal = (
+            db.query(GatewayPrincipal)
+            .filter(GatewayPrincipal.principal_id == payload.principal_id)
+            .first()
+        )
         if not principal or not principal.is_active:
-            raise GatewayAPIError(status.HTTP_401_UNAUTHORIZED, "INVALID_CLIENT", "Invalid principal credentials.")
-        if not principal.hashed_secret or not verify_secret(payload.client_secret, principal.hashed_secret):
-            raise GatewayAPIError(status.HTTP_401_UNAUTHORIZED, "INVALID_CLIENT", "Invalid principal credentials.")
+            raise GatewayAPIError(
+                status.HTTP_401_UNAUTHORIZED,
+                "INVALID_CLIENT",
+                "Invalid principal credentials.",
+            )
+        if not principal.hashed_secret or not verify_secret(
+            payload.client_secret, principal.hashed_secret
+        ):
+            raise GatewayAPIError(
+                status.HTTP_401_UNAUTHORIZED,
+                "INVALID_CLIENT",
+                "Invalid principal credentials.",
+            )
 
         permissions = build_permission_list(principal, payload.scopes)
         issued_at = utcnow()
@@ -231,10 +315,20 @@ class GatewaySecurityService:
             "jti": str(uuid.uuid4()),
             "grant_type": payload.grant_type,
         }
-        encoded = jwt.encode(token_payload, GATEWAY_SECRET_KEY, algorithm=GATEWAY_JWT_ALGORITHM)
+        encoded = jwt.encode(
+            token_payload, GATEWAY_SECRET_KEY, algorithm=GATEWAY_JWT_ALGORITHM
+        )
         principal.last_authenticated_at = issued_at
         db.commit()
-        self._audit(db, principal.id, "AUTH", "token.issue", principal.principal_id, "SUCCESS", {"grant_type": payload.grant_type})
+        self._audit(
+            db,
+            principal.id,
+            "AUTH",
+            "token.issue",
+            principal.principal_id,
+            "SUCCESS",
+            {"grant_type": payload.grant_type},
+        )
         return {
             "accessToken": encoded,
             "tokenType": "bearer",
@@ -244,7 +338,9 @@ class GatewaySecurityService:
             "role": principal.role,
         }
 
-    def authenticate_request(self, db: Session, request: Request) -> Optional[Dict[str, Any]]:
+    def authenticate_request(
+        self, db: Session, request: Request
+    ) -> Optional[Dict[str, Any]]:
         auth_header = request.headers.get("Authorization", "")
         api_key_header = request.headers.get("X-API-Key")
         service_token = request.headers.get("X-Service-Token")
@@ -261,11 +357,24 @@ class GatewaySecurityService:
                     options={"verify_iat": False},
                 )
             except jwt.InvalidTokenError as exc:
-                raise GatewayAPIError(status.HTTP_401_UNAUTHORIZED, "INVALID_TOKEN", "Bearer token is invalid or expired.", str(exc))
+                raise GatewayAPIError(
+                    status.HTTP_401_UNAUTHORIZED,
+                    "INVALID_TOKEN",
+                    "Bearer token is invalid or expired.",
+                    str(exc),
+                )
 
-            principal = db.query(GatewayPrincipal).filter(GatewayPrincipal.principal_id == payload["sub"]).first()
+            principal = (
+                db.query(GatewayPrincipal)
+                .filter(GatewayPrincipal.principal_id == payload["sub"])
+                .first()
+            )
             if not principal or not principal.is_active:
-                raise GatewayAPIError(status.HTTP_401_UNAUTHORIZED, "INVALID_TOKEN", "Token principal is inactive.")
+                raise GatewayAPIError(
+                    status.HTTP_401_UNAUTHORIZED,
+                    "INVALID_TOKEN",
+                    "Token principal is inactive.",
+                )
 
             identity = {
                 "principal": principal,
@@ -300,32 +409,58 @@ class GatewaySecurityService:
                 if candidate.expires_at and candidate.expires_at < utcnow():
                     continue
                 if verify_secret(raw_secret, candidate.hashed_key):
-                    principal = db.query(GatewayPrincipal).filter(GatewayPrincipal.id == candidate.principal_id).first()
+                    principal = (
+                        db.query(GatewayPrincipal)
+                        .filter(GatewayPrincipal.id == candidate.principal_id)
+                        .first()
+                    )
                     if not principal or not principal.is_active:
-                        raise GatewayAPIError(status.HTTP_401_UNAUTHORIZED, "INVALID_CREDENTIAL", "Associated principal is inactive.")
+                        raise GatewayAPIError(
+                            status.HTTP_401_UNAUTHORIZED,
+                            "INVALID_CREDENTIAL",
+                            "Associated principal is inactive.",
+                        )
                     candidate.last_used_at = utcnow()
                     principal.last_authenticated_at = utcnow()
                     db.commit()
                     return {
                         "principal": principal,
-                        "permissions": build_permission_list(principal, _json_loads(candidate.scopes_json, [])),
+                        "permissions": build_permission_list(
+                            principal, _json_loads(candidate.scopes_json, [])
+                        ),
                         "role": principal.role,
                         "credential_type": credential_type,
                         "scopes": _json_loads(candidate.scopes_json, []),
                     }
-            raise GatewayAPIError(status.HTTP_401_UNAUTHORIZED, "INVALID_CREDENTIAL", "API credential is invalid or expired.")
+            raise GatewayAPIError(
+                status.HTTP_401_UNAUTHORIZED,
+                "INVALID_CREDENTIAL",
+                "API credential is invalid or expired.",
+            )
 
         return None
 
-    def require_permissions(self, identity: Optional[Dict[str, Any]], required_permissions: List[str]) -> None:
+    def require_permissions(
+        self,
+        identity: Optional[Dict[str, Any]],
+        required_permissions: List[str],
+    ) -> None:
         if not required_permissions:
             return
         if not identity:
-            raise GatewayAPIError(status.HTTP_401_UNAUTHORIZED, "AUTH_REQUIRED", "Authentication is required for this endpoint.")
+            raise GatewayAPIError(
+                status.HTTP_401_UNAUTHORIZED,
+                "AUTH_REQUIRED",
+                "Authentication is required for this endpoint.",
+            )
         permissions = set(identity.get("permissions", []))
         if "*" in permissions:
             return
-        missing = [permission for permission in required_permissions if permission not in permissions]
+        missing = [
+            permission
+            for permission in required_permissions
+            if permission not in permissions
+        ]
         if missing:
             raise GatewayAPIError(
                 status.HTTP_403_FORBIDDEN,
@@ -358,15 +493,32 @@ class GatewaySecurityService:
         if not any([signature, nonce, timestamp]):
             return
         if not all([signature, nonce, timestamp]):
-            raise GatewayAPIError(status.HTTP_400_BAD_REQUEST, "INVALID_SIGNATURE", "Signature headers are incomplete.")
+            raise GatewayAPIError(
+                status.HTTP_400_BAD_REQUEST,
+                "INVALID_SIGNATURE",
+                "Signature headers are incomplete.",
+            )
         try:
             timestamp_value = int(timestamp)
         except ValueError as exc:
-            raise GatewayAPIError(status.HTTP_400_BAD_REQUEST, "INVALID_SIGNATURE", "Timestamp must be a UNIX epoch integer.", str(exc))
-        if abs(int(datetime.utcnow().timestamp()) - timestamp_value) > 300:
-            raise GatewayAPIError(status.HTTP_401_UNAUTHORIZED, "SIGNATURE_EXPIRED", "Signed request timestamp is outside the accepted window.")
+            raise GatewayAPIError(
+                status.HTTP_400_BAD_REQUEST,
+                "INVALID_SIGNATURE",
+                "Timestamp must be a UNIX epoch integer.",
+                str(exc),
+            )
+        if abs(int(datetime.now(timezone.utc).timestamp()) - timestamp_value) > 300:
+            raise GatewayAPIError(
+                status.HTTP_401_UNAUTHORIZED,
+                "SIGNATURE_EXPIRED",
+                "Signed request timestamp is outside the accepted window.",
+            )
         if not identity:
-            raise GatewayAPIError(status.HTTP_401_UNAUTHORIZED, "AUTH_REQUIRED", "Signed requests still require authentication.")
+            raise GatewayAPIError(
+                status.HTTP_401_UNAUTHORIZED,
+                "AUTH_REQUIRED",
+                "Signed requests still require authentication.",
+            )
 
         signing_input = f"{timestamp}.{nonce}.".encode("utf-8") + body
         expected = hmac.new(
@@ -375,12 +527,20 @@ class GatewaySecurityService:
             hashlib.sha256,
         ).hexdigest()
         if not hmac.compare_digest(expected, signature):
-            raise GatewayAPIError(status.HTTP_401_UNAUTHORIZED, "INVALID_SIGNATURE", "Request signature verification failed.")
+            raise GatewayAPIError(
+                status.HTTP_401_UNAUTHORIZED,
+                "INVALID_SIGNATURE",
+                "Request signature verification failed.",
+            )
 
         principal = identity["principal"]
         existing = db.query(GatewayNonce).filter(GatewayNonce.nonce == nonce).first()
         if existing:
-            raise GatewayAPIError(status.HTTP_409_CONFLICT, "REPLAY_ATTACK_DETECTED", "The request nonce has already been used.")
+            raise GatewayAPIError(
+                status.HTTP_409_CONFLICT,
+                "REPLAY_ATTACK_DETECTED",
+                "The request nonce has already been used.",
+            )
         db.add(
             GatewayNonce(
                 nonce=nonce,
@@ -391,15 +551,41 @@ class GatewaySecurityService:
         )
         db.commit()
 
-    def apply_rate_limit(self, db: Session, request: Request, identity: Optional[Dict[str, Any]]) -> None:
+    def apply_rate_limit(
+        self, db: Session, request: Request, identity: Optional[Dict[str, Any]]
+    ) -> None:
         principal = identity["principal"] if identity else None
-        org_id = principal.organization_id if principal else request.headers.get("X-Organization-Id", "anonymous")
-        identifier = principal.principal_id if principal else request.client.host if request.client else "anonymous"
+        org_id = (
+            principal.organization_id
+            if principal
+            else request.headers.get("X-Organization-Id", "anonymous")
+        )
+        identifier = (
+            principal.principal_id
+            if principal
+            else request.client.host if request.client else "anonymous"
+        )
         checks = [
-            ("burst", GATEWAY_BURST_LIMIT, utcnow().replace(microsecond=0, second=(utcnow().second // 5) * 5)),
-            ("minute", GATEWAY_RATE_LIMIT_MINUTE, utcnow().replace(second=0, microsecond=0)),
-            ("hour", GATEWAY_RATE_LIMIT_HOUR, utcnow().replace(minute=0, second=0, microsecond=0)),
-            ("day", GATEWAY_RATE_LIMIT_DAY, utcnow().replace(hour=0, minute=0, second=0, microsecond=0)),
+            (
+                "burst",
+                GATEWAY_BURST_LIMIT,
+                utcnow().replace(microsecond=0, second=(utcnow().second // 5) * 5),
+            ),
+            (
+                "minute",
+                GATEWAY_RATE_LIMIT_MINUTE,
+                utcnow().replace(second=0, microsecond=0),
+            ),
+            (
+                "hour",
+                GATEWAY_RATE_LIMIT_HOUR,
+                utcnow().replace(minute=0, second=0, microsecond=0),
+            ),
+            (
+                "day",
+                GATEWAY_RATE_LIMIT_DAY,
+                utcnow().replace(hour=0, minute=0, second=0, microsecond=0),
+            ),
         ]
         scopes = {
             "user": identifier,
@@ -408,7 +594,11 @@ class GatewaySecurityService:
         for window_name, limit_value, window_started_at in checks:
             for scope, scope_identifier in scopes.items():
                 bucket_key = f"{scope}:{scope_identifier}:{window_name}"
-                bucket = db.query(GatewayRateLimitBucket).filter(GatewayRateLimitBucket.bucket_key == bucket_key).first()
+                bucket = (
+                    db.query(GatewayRateLimitBucket)
+                    .filter(GatewayRateLimitBucket.bucket_key == bucket_key)
+                    .first()
+                )
                 if not bucket:
                     bucket = GatewayRateLimitBucket(
                         bucket_key=bucket_key,
@@ -429,7 +619,11 @@ class GatewaySecurityService:
                         status.HTTP_429_TOO_MANY_REQUESTS,
                         "RATE_LIMIT_EXCEEDED",
                         "Gateway rate limit exceeded.",
-                        {"scope": scope, "window": window_name, "limit": limit_value},
+                        {
+                            "scope": scope,
+                            "window": window_name,
+                            "limit": limit_value,
+                        },
                     )
         db.commit()
 

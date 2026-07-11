@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl
@@ -60,7 +60,7 @@ class GatewayActionEnvelope(GatewayBaseModel):
 
 class GatewayRequestEnvelope(GatewayBaseModel):
     request_id: Optional[str] = Field(default=None, alias="requestId")
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     agent: Optional[GatewayParty] = None
     user: Optional[GatewayParty] = None
     workspace: Optional[GatewayScopeRef] = None
@@ -85,13 +85,21 @@ class GatewayResponseEnvelope(GatewayBaseModel):
     processing_time: float = Field(default=0.0, alias="processingTime")
     trace_id: str = Field(alias="traceId")
     request_id: str = Field(alias="requestId")
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     version: str
 
 
 class PrincipalRegistrationRequest(GatewayBaseModel):
     name: str
-    principal_type: Literal["ADMIN", "MANAGER", "EMPLOYEE", "AI_AGENT", "AUTOMATION_SERVICE", "THIRD_PARTY", "READ_ONLY"]
+    principal_type: Literal[
+        "ADMIN",
+        "MANAGER",
+        "EMPLOYEE",
+        "AI_AGENT",
+        "AUTOMATION_SERVICE",
+        "THIRD_PARTY",
+        "READ_ONLY",
+    ]
     role: str
     permissions: List[str] = Field(default_factory=list)
     organization_id: Optional[str] = Field(default=None, alias="organizationId")
@@ -117,7 +125,9 @@ class PrincipalResponse(GatewayBaseModel):
 class ApiKeyCreateRequest(GatewayBaseModel):
     principal_id: str = Field(alias="principalId")
     label: str
-    credential_type: Literal["API_KEY", "SERVICE_TOKEN", "MACHINE_TOKEN"] = Field(default="API_KEY", alias="credentialType")
+    credential_type: Literal["API_KEY", "SERVICE_TOKEN", "MACHINE_TOKEN"] = Field(
+        default="API_KEY", alias="credentialType"
+    )
     scopes: List[str] = Field(default_factory=list)
     expires_in_days: int = Field(default=90, alias="expiresInDays", ge=1, le=365)
     metadata: Dict[str, Any] = Field(default_factory=dict)
@@ -138,7 +148,9 @@ class ApiKeyResponse(GatewayBaseModel):
 class TokenRequest(GatewayBaseModel):
     principal_id: str = Field(alias="principalId")
     client_secret: str = Field(alias="clientSecret")
-    grant_type: Literal["client_credentials", "password", "service_token"] = Field(default="client_credentials", alias="grantType")
+    grant_type: Literal["client_credentials", "password", "service_token"] = Field(
+        default="client_credentials", alias="grantType"
+    )
     scopes: List[str] = Field(default_factory=list)
 
 
@@ -197,7 +209,9 @@ class WebhookEndpointResponse(GatewayBaseModel):
 class TaskCreateRequest(GatewayBaseModel):
     request: GatewayRequestEnvelope
     priority: Literal["low", "normal", "high"] = "normal"
-    task_type: Literal["BACKGROUND_JOB", "LONG_RUNNING_TASK", "BATCH_JOB"] = Field(default="BACKGROUND_JOB", alias="taskType")
+    task_type: Literal["BACKGROUND_JOB", "LONG_RUNNING_TASK", "BATCH_JOB"] = Field(
+        default="BACKGROUND_JOB", alias="taskType"
+    )
 
 
 class TaskResponse(GatewayBaseModel):

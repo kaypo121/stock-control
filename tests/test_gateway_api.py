@@ -81,8 +81,20 @@ def test_gateway_chat_completion_uses_provider_service(client, monkeypatch):
             "object": "chat.completion",
             "created": 1234567890,
             "message": {"role": "assistant", "content": "Gateway response"},
-            "choices": [{"message": {"role": "assistant", "content": "Gateway response"}, "finish_reason": "stop"}],
-            "usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15},
+            "choices": [
+                {
+                    "message": {
+                        "role": "assistant",
+                        "content": "Gateway response",
+                    },
+                    "finish_reason": "stop",
+                }
+            ],
+            "usage": {
+                "prompt_tokens": 10,
+                "completion_tokens": 5,
+                "total_tokens": 15,
+            },
             "finishReason": "stop",
         }
 
@@ -90,7 +102,10 @@ def test_gateway_chat_completion_uses_provider_service(client, monkeypatch):
         "app.api.gateway_endpoints.provider_service.require_provider",
         lambda provider_name: {"canonicalName": "openai", "configured": True},
     )
-    monkeypatch.setattr("app.api.gateway_endpoints.provider_service.chat_completion", fake_completion)
+    monkeypatch.setattr(
+        "app.api.gateway_endpoints.provider_service.chat_completion",
+        fake_completion,
+    )
 
     response = client.post(
         "/v1/chat/completions",
@@ -99,7 +114,10 @@ def test_gateway_chat_completion_uses_provider_service(client, monkeypatch):
             "model": "gpt-4o-mini",
             "messages": [{"role": "user", "content": "Hello gateway"}],
             "stream": False,
-            "context": {"traceId": "trace-chat-1", "correlationId": "corr-chat-1"},
+            "context": {
+                "traceId": "trace-chat-1",
+                "correlationId": "corr-chat-1",
+            },
         },
         headers=headers,
     )
@@ -114,7 +132,13 @@ def test_gateway_upload_rejects_unsupported_extension(client):
     response = client.post(
         "/v1/files/upload",
         headers=headers,
-        files={"file": ("malware.exe", BytesIO(b"payload"), "application/octet-stream")},
+        files={
+            "file": (
+                "malware.exe",
+                BytesIO(b"payload"),
+                "application/octet-stream",
+            )
+        },
     )
 
     assert response.status_code == 400

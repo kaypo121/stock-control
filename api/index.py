@@ -7,4 +7,4 @@ project_root = str(Path(__file__).resolve().parent.parent)
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from app.main import app  # noqa: F401 – re-export for Vercel ASGI handler
+from app.main import app  # noqa: F401,E402 – re-export for Vercel ASGI handler

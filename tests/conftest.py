@@ -1,18 +1,20 @@
-import pytest
 import sys
+from contextlib import asynccontextmanager
 from pathlib import Path
+
+import pytest
+from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
-from fastapi.testclient import TestClient
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from app.database import Base, get_db
-from app.main import app
-from app.services.gateway_service import gateway_orchestrator
+from app.database import Base, get_db  # noqa: E402
+from app.main import app  # noqa: E402
+from app.services.gateway_service import gateway_orchestrator  # noqa: E402
 
 # In-memory SQLite for testing
 SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"
@@ -49,9 +51,17 @@ def client(db_session):
 
     app.dependency_overrides[get_db] = override_get_db
     gateway_orchestrator.bootstrap(db_session)
-    original_startup_handlers = list(app.router.on_startup)
-    app.router.on_startup = []
-    with TestClient(app) as c:
-        yield c
-    app.router.on_startup = original_startup_handlers
-    app.dependency_overrides.clear()
+    original_lifespan = app.router.lifespan_context
+
+    @asynccontextmanager
+    async def test_lifespan(_app):
+        """Keep tests isolated from the application's configured database."""
+        yield
+
+    app.router.lifespan_context = test_lifespan
+    try:
+        with TestClient(app) as c:
+            yield c
+    finally:
+        app.router.lifespan_context = original_lifespan
+        app.dependency_overrides.clear()

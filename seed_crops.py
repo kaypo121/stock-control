@@ -11,10 +11,8 @@ Run from the project root:
 """
 
 import sys
-import os
-import re
+from datetime import datetime, timezone
 from pathlib import Path
-from datetime import datetime
 
 # Make sure app/ is on the path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -22,8 +20,15 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import pandas as pd
 from sqlalchemy.orm import Session
 
-from app.database import engine, Base, SessionLocal
-from app.models.stock_models import Farmer, Product, Warehouse, StockTransaction, StockBalance, StockAlert, ImportLog
+from app.database import Base, SessionLocal, engine
+from app.models.stock_models import (
+    Farmer,
+    ImportLog,
+    Product,
+    StockBalance,
+    StockTransaction,
+    Warehouse,
+)
 
 # ── Ensure all tables exist ──────────────────────────────────────────────────
 Base.metadata.create_all(bind=engine)
@@ -34,7 +39,7 @@ FOCUS_CROPS = [
     {
         "product_name": "Tomato",
         "category": "Vegetables",
-        "unit": "crate",          # Ghana standard: ~25 kg crate
+        "unit": "crate",  # Ghana standard: ~25 kg crate
         "description": "Fresh garden tomatoes (standard 25 kg crate)",
         "dataset_names": ["TOMATO", "TOMATOES"],
         "reorder_level": 50.0,
@@ -67,36 +72,150 @@ FOCUS_CROPS = [
 
 # ── Regional warehouses for Ghana ────────────────────────────────────────────
 WAREHOUSES = [
-    {"warehouse_name": "Ashanti Regional Store",       "region": "Ashanti",       "district": "Kumasi Metro",         "capacity": 50000.0},
-    {"warehouse_name": "Greater Accra Storage Hub",    "region": "Greater Accra", "district": "Accra Metro",          "capacity": 40000.0},
-    {"warehouse_name": "Brong-Ahafo Grain Depot",      "region": "Bono",          "district": "Sunyani Municipal",    "capacity": 35000.0},
-    {"warehouse_name": "Northern Region Agro Store",   "region": "Northern",      "district": "Tamale Metro",         "capacity": 60000.0},
-    {"warehouse_name": "Volta Region Produce Store",   "region": "Volta",         "district": "Ho Municipal",         "capacity": 30000.0},
-    {"warehouse_name": "Eastern Region Farm Hub",      "region": "Eastern",       "district": "Koforidua Municipal",  "capacity": 28000.0},
-    {"warehouse_name": "Western Region Cold Store",    "region": "Western",       "district": "Sekondi-Takoradi",     "capacity": 25000.0},
-    {"warehouse_name": "Upper East Grain Silo",        "region": "Upper East",    "district": "Bolgatanga Municipal", "capacity": 45000.0},
-    {"warehouse_name": "Upper West Storage Centre",    "region": "Upper West",    "district": "Wa Municipal",         "capacity": 40000.0},
-    {"warehouse_name": "Central Region Produce Hub",   "region": "Central",       "district": "Cape Coast Metro",     "capacity": 22000.0},
+    {
+        "warehouse_name": "Ashanti Regional Store",
+        "region": "Ashanti",
+        "district": "Kumasi Metro",
+        "capacity": 50000.0,
+    },
+    {
+        "warehouse_name": "Greater Accra Storage Hub",
+        "region": "Greater Accra",
+        "district": "Accra Metro",
+        "capacity": 40000.0,
+    },
+    {
+        "warehouse_name": "Brong-Ahafo Grain Depot",
+        "region": "Bono",
+        "district": "Sunyani Municipal",
+        "capacity": 35000.0,
+    },
+    {
+        "warehouse_name": "Northern Region Agro Store",
+        "region": "Northern",
+        "district": "Tamale Metro",
+        "capacity": 60000.0,
+    },
+    {
+        "warehouse_name": "Volta Region Produce Store",
+        "region": "Volta",
+        "district": "Ho Municipal",
+        "capacity": 30000.0,
+    },
+    {
+        "warehouse_name": "Eastern Region Farm Hub",
+        "region": "Eastern",
+        "district": "Koforidua Municipal",
+        "capacity": 28000.0,
+    },
+    {
+        "warehouse_name": "Western Region Cold Store",
+        "region": "Western",
+        "district": "Sekondi-Takoradi",
+        "capacity": 25000.0,
+    },
+    {
+        "warehouse_name": "Upper East Grain Silo",
+        "region": "Upper East",
+        "district": "Bolgatanga Municipal",
+        "capacity": 45000.0,
+    },
+    {
+        "warehouse_name": "Upper West Storage Centre",
+        "region": "Upper West",
+        "district": "Wa Municipal",
+        "capacity": 40000.0,
+    },
+    {
+        "warehouse_name": "Central Region Produce Hub",
+        "region": "Central",
+        "district": "Cape Coast Metro",
+        "capacity": 22000.0,
+    },
 ]
 
 # ── Regional cooperative farmers (one per region in the dataset) ─────────────
 REGION_FARMERS = [
-    {"full_name": "Western Regional Cooperative",       "region": "Western",      "district": "Various Districts"},
-    {"full_name": "Greater Accra Regional Cooperative", "region": "Greater Accra","district": "Various Districts"},
-    {"full_name": "Ashanti Regional Cooperative",       "region": "Ashanti",      "district": "Various Districts"},
-    {"full_name": "Brong-Ahafo Regional Cooperative",   "region": "Bono",         "district": "Various Districts"},
-    {"full_name": "Northern Regional Cooperative",      "region": "Northern",     "district": "Various Districts"},
-    {"full_name": "Upper East Regional Cooperative",    "region": "Upper East",   "district": "Various Districts"},
-    {"full_name": "Upper West Regional Cooperative",    "region": "Upper West",   "district": "Various Districts"},
-    {"full_name": "Volta Regional Cooperative",         "region": "Volta",        "district": "Various Districts"},
-    {"full_name": "Eastern Regional Cooperative",       "region": "Eastern",      "district": "Various Districts"},
-    {"full_name": "Central Regional Cooperative",       "region": "Central",      "district": "Various Districts"},
-    {"full_name": "Bono East Regional Cooperative",     "region": "Bono East",    "district": "Various Districts"},
-    {"full_name": "Oti Regional Cooperative",           "region": "Oti",          "district": "Various Districts"},
-    {"full_name": "Savannah Regional Cooperative",      "region": "Savannah",     "district": "Various Districts"},
-    {"full_name": "North East Regional Cooperative",    "region": "North East",   "district": "Various Districts"},
-    {"full_name": "Ahafo Regional Cooperative",         "region": "Ahafo",        "district": "Various Districts"},
-    {"full_name": "Western North Regional Cooperative", "region": "Western North","district": "Various Districts"},
+    {
+        "full_name": "Western Regional Cooperative",
+        "region": "Western",
+        "district": "Various Districts",
+    },
+    {
+        "full_name": "Greater Accra Regional Cooperative",
+        "region": "Greater Accra",
+        "district": "Various Districts",
+    },
+    {
+        "full_name": "Ashanti Regional Cooperative",
+        "region": "Ashanti",
+        "district": "Various Districts",
+    },
+    {
+        "full_name": "Brong-Ahafo Regional Cooperative",
+        "region": "Bono",
+        "district": "Various Districts",
+    },
+    {
+        "full_name": "Northern Regional Cooperative",
+        "region": "Northern",
+        "district": "Various Districts",
+    },
+    {
+        "full_name": "Upper East Regional Cooperative",
+        "region": "Upper East",
+        "district": "Various Districts",
+    },
+    {
+        "full_name": "Upper West Regional Cooperative",
+        "region": "Upper West",
+        "district": "Various Districts",
+    },
+    {
+        "full_name": "Volta Regional Cooperative",
+        "region": "Volta",
+        "district": "Various Districts",
+    },
+    {
+        "full_name": "Eastern Regional Cooperative",
+        "region": "Eastern",
+        "district": "Various Districts",
+    },
+    {
+        "full_name": "Central Regional Cooperative",
+        "region": "Central",
+        "district": "Various Districts",
+    },
+    {
+        "full_name": "Bono East Regional Cooperative",
+        "region": "Bono East",
+        "district": "Various Districts",
+    },
+    {
+        "full_name": "Oti Regional Cooperative",
+        "region": "Oti",
+        "district": "Various Districts",
+    },
+    {
+        "full_name": "Savannah Regional Cooperative",
+        "region": "Savannah",
+        "district": "Various Districts",
+    },
+    {
+        "full_name": "North East Regional Cooperative",
+        "region": "North East",
+        "district": "Various Districts",
+    },
+    {
+        "full_name": "Ahafo Regional Cooperative",
+        "region": "Ahafo",
+        "district": "Various Districts",
+    },
+    {
+        "full_name": "Western North Regional Cooperative",
+        "region": "Western North",
+        "district": "Various Districts",
+    },
 ]
 
 
@@ -154,7 +273,7 @@ def seed_focus_products(db: Session) -> dict:
                 "category": crop["category"],
                 "unit": crop["unit"],
                 "description": crop["description"],
-            }
+            },
         )
         if created:
             print(f"  ✓ Created product: {crop['product_name']} (unit={crop['unit']})")
@@ -183,7 +302,7 @@ def seed_warehouses(db: Session) -> dict:
                 "region": wh["region"],
                 "district": wh["district"],
                 "capacity": wh["capacity"],
-            }
+            },
         )
         if created:
             print(f"  ✓ Created warehouse: {wh['warehouse_name']}")
@@ -208,7 +327,7 @@ def seed_regional_farmers(db: Session) -> dict:
                 "region": f["region"],
                 "district": f["district"],
                 "farm_name": f"{f['region']} Regional Agricultural Cooperative",
-            }
+            },
         )
         if created:
             print(f"  ✓ Created farmer: {f['full_name']}")
@@ -223,29 +342,35 @@ def seed_regional_farmers(db: Session) -> dict:
 def get_warehouse_for_region(region_name: str, wh_map: dict) -> Warehouse:
     """Maps a dataset region name to the closest regional warehouse."""
     region_to_wh = {
-        "Western":      "Western Region Cold Store",
+        "Western": "Western Region Cold Store",
         "Greater Accra": "Greater Accra Storage Hub",
-        "Ashanti":      "Ashanti Regional Store",
-        "Bono":         "Brong-Ahafo Grain Depot",
-        "Northern":     "Northern Region Agro Store",
-        "Upper East":   "Upper East Grain Silo",
-        "Upper West":   "Upper West Storage Centre",
-        "Volta":        "Volta Region Produce Store",
-        "Eastern":      "Eastern Region Farm Hub",
-        "Central":      "Central Region Produce Hub",
+        "Ashanti": "Ashanti Regional Store",
+        "Bono": "Brong-Ahafo Grain Depot",
+        "Northern": "Northern Region Agro Store",
+        "Upper East": "Upper East Grain Silo",
+        "Upper West": "Upper West Storage Centre",
+        "Volta": "Volta Region Produce Store",
+        "Eastern": "Eastern Region Farm Hub",
+        "Central": "Central Region Produce Hub",
     }
     wh_name = region_to_wh.get(region_name, "Greater Accra Storage Hub")
     return wh_map.get(wh_name)
 
 
-def import_production_data(db: Session, product_map: dict, farmer_map: dict, wh_map: dict):
+def import_production_data(
+    db: Session, product_map: dict, farmer_map: dict, wh_map: dict
+):
     """
     Reads the PRODUCTION ESTIMATES CSV and imports MAIZE, RICE, YAM, TOMATO rows
     as STOCK_IN transactions in the stock system.
     Production is in metric tons (MT) — converted to kg (×1000) for weight-based crops,
     or to crates (÷0.025) for Tomato.
     """
-    dataset_path = Path("datesets folder") / "agricultural-production-estimates-1993-2017-All-2026-06-04_2242 (1)" / "PRODUCTION ESTIMATES.csv"
+    dataset_path = (
+        Path("datesets folder")
+        / "agricultural-production-estimates-1993-2017-All-2026-06-04_2242 (1)"
+        / "PRODUCTION ESTIMATES.csv"
+    )
 
     if not dataset_path.exists():
         print(f"\n⚠ Dataset not found: {dataset_path}")
@@ -295,9 +420,9 @@ def import_production_data(db: Session, product_map: dict, farmer_map: dict, wh_
         try:
             crop_clean = str(row["CROP_CLEAN"]).strip()
             region_raw = str(row.get("REGION", "Unknown")).strip()
-            district   = str(row.get("DISTRICT", "Unknown District")).strip()
-            year       = str(row.get("YEAR", "2000")).strip()
-            prod_mt    = parse_number(row.get("PRODUCTION (MT)", 0))
+            district = str(row.get("DISTRICT", "Unknown District")).strip()
+            year = str(row.get("YEAR", "2000")).strip()
+            prod_mt = parse_number(row.get("PRODUCTION (MT)", 0))
 
             if prod_mt <= 0:
                 skipped += 1
@@ -325,13 +450,17 @@ def import_production_data(db: Session, product_map: dict, farmer_map: dict, wh_
             ref_note = f"Production estimate {year} - {district}"
 
             # Check if this exact transaction already exists (idempotency)
-            existing = db.query(StockTransaction).filter(
-                StockTransaction.farmer_id == farmer.farmer_id,
-                StockTransaction.product_id == product.product_id,
-                StockTransaction.warehouse_id == warehouse_id,
-                StockTransaction.transaction_date == tx_date,
-                StockTransaction.reference_note == ref_note
-            ).first()
+            existing = (
+                db.query(StockTransaction)
+                .filter(
+                    StockTransaction.farmer_id == farmer.farmer_id,
+                    StockTransaction.product_id == product.product_id,
+                    StockTransaction.warehouse_id == warehouse_id,
+                    StockTransaction.transaction_date == tx_date,
+                    StockTransaction.reference_note == ref_note,
+                )
+                .first()
+            )
 
             if existing:
                 skipped += 1
@@ -356,7 +485,8 @@ def import_production_data(db: Session, product_map: dict, farmer_map: dict, wh_
 
             if not balance:
                 reorder = next(
-                    c["reorder_level"] for c in FOCUS_CROPS
+                    c["reorder_level"]
+                    for c in FOCUS_CROPS
                     if product_map.get(c["product_name"]) == product
                 )
                 balance = StockBalance(
@@ -372,7 +502,7 @@ def import_production_data(db: Session, product_map: dict, farmer_map: dict, wh_
                 balance_cache[bal_key] = balance
 
             balance.current_stock += quantity_converted
-            balance.last_updated = datetime.utcnow()
+            balance.last_updated = datetime.now(timezone.utc)
 
             imported += 1
 
@@ -393,7 +523,9 @@ def import_production_data(db: Session, product_map: dict, farmer_map: dict, wh_
 
     db.commit()
 
-    print(f"\n  ✓ Import complete: {imported} transactions imported, {skipped} skipped/duplicate")
+    print(
+        f"\n  ✓ Import complete: {imported} transactions imported, {skipped} skipped/duplicate"
+    )
     if errors[:5]:
         print(f"  ⚠ Sample errors (first 5): {errors[:5]}")
 
@@ -411,19 +543,31 @@ def import_production_data(db: Session, product_map: dict, farmer_map: dict, wh_
 
 def print_summary(db: Session):
     """Prints a summary of what's in the database after seeding."""
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("DATABASE SUMMARY AFTER SEEDING")
-    print("="*60)
+    print("=" * 60)
 
     for crop_def in FOCUS_CROPS:
-        product = db.query(Product).filter(Product.product_name == crop_def["product_name"]).first()
+        product = (
+            db.query(Product)
+            .filter(Product.product_name == crop_def["product_name"])
+            .first()
+        )
         if not product:
             print(f"\n{crop_def['product_name']}: NOT FOUND")
             continue
 
-        balances = db.query(StockBalance).filter(StockBalance.product_id == product.product_id).all()
+        balances = (
+            db.query(StockBalance)
+            .filter(StockBalance.product_id == product.product_id)
+            .all()
+        )
         total_stock = sum(b.current_stock for b in balances)
-        tx_count = db.query(StockTransaction).filter(StockTransaction.product_id == product.product_id).count()
+        tx_count = (
+            db.query(StockTransaction)
+            .filter(StockTransaction.product_id == product.product_id)
+            .count()
+        )
 
         print(f"\n{'─'*40}")
         print(f"  Crop        : {product.product_name}")
@@ -432,9 +576,9 @@ def print_summary(db: Session):
         print(f"  Total Stock : {total_stock:,.0f} {product.unit}")
         print(f"  Reorder Lvl : {crop_def['reorder_level']:,.0f} {product.unit}")
         if total_stock <= crop_def["reorder_level"]:
-            print(f"  Status      : ⚠ LOW STOCK")
+            print("  Status      : ⚠ LOW STOCK")
         else:
-            print(f"  Status      : ✓ HEALTHY")
+            print("  Status      : ✓ HEALTHY")
 
     print("\n")
     total_farmers = db.query(Farmer).count()
@@ -443,14 +587,14 @@ def print_summary(db: Session):
     print(f"  Farmers     : {total_farmers}")
     print(f"  Warehouses  : {total_warehouses}")
     print(f"  Total Txs   : {total_txs}")
-    print("="*60)
+    print("=" * 60)
 
 
 def main():
-    print("="*60)
+    print("=" * 60)
     print("AGRICULTURE STOCK CONTROL — CROP SEEDER")
     print("Focus Crops: Tomato | Yam | Maize | Rice")
-    print("="*60)
+    print("=" * 60)
 
     db: Session = SessionLocal()
     try:

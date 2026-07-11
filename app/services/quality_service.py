@@ -40,44 +40,79 @@ Risk thresholds:  Low ≥ 70 | Medium ≥ 45 | High < 45
 Buy thresholds:   Buy ≥ 70 | Caution ≥ 45 | Do Not Buy < 45
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, Tuple
+
 from sqlalchemy.orm import Session
 
 from app.models.quality_models import (
-    QualityAssessment, ProduceQualityDetail,
-    LivestockQualityDetail, PoultryQualityDetail, FishQualityDetail,
-    GradeClassification, RiskLevel, PurchaseRecommendation,
-    ProductCategory, HealthStatus, FreshnessLevel, RipenessLevel
+    FishQualityDetail,
+    FreshnessLevel,
+    GradeClassification,
+    HealthStatus,
+    LivestockQualityDetail,
+    PoultryQualityDetail,
+    ProduceQualityDetail,
+    PurchaseRecommendation,
+    QualityAssessment,
+    RipenessLevel,
+    RiskLevel,
 )
 from app.schemas.quality_schemas import (
+    FishAttributesInput,
+    LivestockAttributesInput,
+    PoultryAttributesInput,
+    ProduceAttributesInput,
     QualityAssessmentRequest,
-    ProduceAttributesInput, LivestockAttributesInput,
-    PoultryAttributesInput, FishAttributesInput
 )
-
 
 # ── Reference price table (GHS per unit) ──────────────────────────────────────
 # Used for estimated market value calculation.  Update as needed.
 MARKET_PRICE_GHS = {
     # Produce (per kg unless noted)
-    "tomato":   8.50,   "maize":    3.20,   "rice":     6.50,
-    "yam":      4.80,   "cassava":  2.50,   "plantain": 3.80,
-    "pepper":   12.00,  "onion":    9.00,   "garden egg": 10.00,
-    "mango":    5.50,   "pineapple": 4.00,  "orange":   2.50,
-    "watermelon": 3.00, "pawpaw":   4.50,   "banana":   3.50,
-    "cocoa":    18.00,  "groundnut": 7.00,  "soyabean": 5.50,
-    "cowpea":   8.00,   "sorghum":  4.00,   "millet":   4.50,
+    "tomato": 8.50,
+    "maize": 3.20,
+    "rice": 6.50,
+    "yam": 4.80,
+    "cassava": 2.50,
+    "plantain": 3.80,
+    "pepper": 12.00,
+    "onion": 9.00,
+    "garden egg": 10.00,
+    "mango": 5.50,
+    "pineapple": 4.00,
+    "orange": 2.50,
+    "watermelon": 3.00,
+    "pawpaw": 4.50,
+    "banana": 3.50,
+    "cocoa": 18.00,
+    "groundnut": 7.00,
+    "soyabean": 5.50,
+    "cowpea": 8.00,
+    "sorghum": 4.00,
+    "millet": 4.50,
     # Livestock (per head)
-    "cattle":   3500.0, "cow":      3500.0, "bull":     4500.0,
-    "goat":     550.0,  "sheep":    600.0,  "pig":      800.0,
+    "cattle": 3500.0,
+    "cow": 3500.0,
+    "bull": 4500.0,
+    "goat": 550.0,
+    "sheep": 600.0,
+    "pig": 800.0,
     # Poultry (per bird)
-    "chicken":  45.0,   "broiler":  55.0,   "layer":    40.0,
-    "turkey":   180.0,  "duck":     65.0,   "guinea fowl": 50.0,
+    "chicken": 45.0,
+    "broiler": 55.0,
+    "layer": 40.0,
+    "turkey": 180.0,
+    "duck": 65.0,
+    "guinea fowl": 50.0,
     # Fish (per kg)
-    "tilapia":  25.0,   "catfish":  30.0,   "tuna":     40.0,
-    "herring":  15.0,   "salmon":   55.0,   "mackerel": 20.0,
-    "default":  10.0,
+    "tilapia": 25.0,
+    "catfish": 30.0,
+    "tuna": 40.0,
+    "herring": 15.0,
+    "salmon": 55.0,
+    "mackerel": 20.0,
+    "default": 10.0,
 }
 
 
@@ -89,8 +124,8 @@ def _get_base_price(product_name: str, category: str) -> float:
     # Fallback by category
     cat_defaults = {
         "Livestock": 800.0,
-        "Poultry":   50.0,
-        "Fish":      25.0,
+        "Poultry": 50.0,
+        "Fish": 25.0,
     }
     return cat_defaults.get(category, MARKET_PRICE_GHS["default"])
 
@@ -124,7 +159,10 @@ def _recommendation(score: float, grade: str) -> Tuple[str, str]:
     # grade may be a GradeClassification enum or plain string — normalise to display value
     grade_display = grade.value if hasattr(grade, "value") else str(grade)
 
-    if score >= 70 and grade not in (GradeClassification.GRADE_C, GradeClassification.REJECT):
+    if score >= 70 and grade not in (
+        GradeClassification.GRADE_C,
+        GradeClassification.REJECT,
+    ):
         rec = PurchaseRecommendation.BUY
         reason = (
             f"Product achieved a quality score of {score:.1f}/100 and is graded {grade_display}. "
@@ -151,21 +189,23 @@ def _recommendation(score: float, grade: str) -> Tuple[str, str]:
 # ── Produce Scoring ───────────────────────────────────────────────────────────
 
 _RIPENESS_SCORES = {
-    RipenessLevel.UNRIPE:       50.0,
-    RipenessLevel.NEARLY_RIPE:  80.0,
-    RipenessLevel.RIPE:         100.0,
-    RipenessLevel.OVERRIPE:     30.0,
+    RipenessLevel.UNRIPE: 50.0,
+    RipenessLevel.NEARLY_RIPE: 80.0,
+    RipenessLevel.RIPE: 100.0,
+    RipenessLevel.OVERRIPE: 30.0,
 }
 
 _RIPENESS_SHELF_DAYS = {
-    RipenessLevel.UNRIPE:       14,
-    RipenessLevel.NEARLY_RIPE:  7,
-    RipenessLevel.RIPE:         3,
-    RipenessLevel.OVERRIPE:     1,
+    RipenessLevel.UNRIPE: 14,
+    RipenessLevel.NEARLY_RIPE: 7,
+    RipenessLevel.RIPE: 3,
+    RipenessLevel.OVERRIPE: 1,
 }
 
 
-def score_produce(attrs: ProduceAttributesInput, product_name: str, category: str) -> dict:
+def score_produce(
+    attrs: ProduceAttributesInput, product_name: str, category: str
+) -> dict:
     """Score produce and return a dict of computed values."""
 
     # Freshness (30 pts)
@@ -190,7 +230,10 @@ def score_produce(attrs: ProduceAttributesInput, product_name: str, category: st
     moisture_pts = 10.0  # default full if not provided
     if moisture is not None:
         name_lower = product_name.lower()
-        if any(g in name_lower for g in ["maize", "rice", "sorghum", "millet", "grain", "cereal"]):
+        if any(
+            g in name_lower
+            for g in ["maize", "rice", "sorghum", "millet", "grain", "cereal"]
+        ):
             optimal_lo, optimal_hi = 10.0, 15.0
         elif category in ("Vegetable",):
             optimal_lo, optimal_hi = 80.0, 95.0
@@ -206,7 +249,14 @@ def score_produce(attrs: ProduceAttributesInput, product_name: str, category: st
     disease_raw = (attrs.disease_symptoms or "").strip().lower()
     disease_pts = 0.0 if disease_raw not in ("", "none", "none observed", "no") else 5.0
 
-    total = _clamp(freshness_pts + ripeness_pts + vis_dmg_pts + pest_dmg_pts + moisture_pts + disease_pts)
+    total = _clamp(
+        freshness_pts
+        + ripeness_pts
+        + vis_dmg_pts
+        + pest_dmg_pts
+        + moisture_pts
+        + disease_pts
+    )
 
     # Shelf life estimate
     shelf_life = attrs.estimated_shelf_life_days
@@ -233,32 +283,32 @@ def score_produce(attrs: ProduceAttributesInput, product_name: str, category: st
 
 _HEALTH_STATUS_SCORES = {
     HealthStatus.EXCELLENT: 100.0,
-    HealthStatus.GOOD:      80.0,
-    HealthStatus.FAIR:      55.0,
-    HealthStatus.POOR:      30.0,
-    HealthStatus.CRITICAL:  10.0,
+    HealthStatus.GOOD: 80.0,
+    HealthStatus.FAIR: 55.0,
+    HealthStatus.POOR: 30.0,
+    HealthStatus.CRITICAL: 10.0,
 }
 
 _VACC_SCORES = {
     "up to date": 100.0,
-    "partial":    60.0,
-    "none":       20.0,
-    "unknown":    40.0,
+    "partial": 60.0,
+    "none": 20.0,
+    "unknown": 40.0,
 }
 
 _MOBILITY_SCORES = {
-    "normal":       100.0,
-    "slight limp":  60.0,
-    "lame":         20.0,
-    "immobile":     5.0,
+    "normal": 100.0,
+    "slight limp": 60.0,
+    "lame": 20.0,
+    "immobile": 5.0,
 }
 
 _FEEDING_SCORES = {
-    "well-fed":     100.0,
-    "good":         90.0,
-    "adequate":     70.0,
-    "thin":         40.0,
-    "emaciated":    10.0,
+    "well-fed": 100.0,
+    "good": 90.0,
+    "adequate": 70.0,
+    "thin": 40.0,
+    "emaciated": 10.0,
 }
 
 
@@ -306,7 +356,6 @@ def score_livestock(attrs: LivestockAttributesInput, product_name: str) -> dict:
     else:
         total = _clamp(bcs_pts + health_pts + mobility_pts + vacc_pts + feed_pts)
 
-    weight = attrs.weight_kg or 100.0
     base_price = _get_base_price(product_name, "Livestock")
     value_multiplier = total / 100.0
     market_value = round(base_price * value_multiplier, 2)
@@ -317,13 +366,13 @@ def score_livestock(attrs: LivestockAttributesInput, product_name: str) -> dict:
 # ── Poultry Scoring ───────────────────────────────────────────────────────────
 
 _FEATHER_SCORES = {
-    "full, glossy":  100.0,
-    "full":          90.0,
-    "glossy":        90.0,
+    "full, glossy": 100.0,
+    "full": 90.0,
+    "glossy": 90.0,
     "slight patchy": 65.0,
-    "patchy":        45.0,
-    "bare patches":  25.0,
-    "bare":          15.0,
+    "patchy": 45.0,
+    "bare patches": 25.0,
+    "bare": 15.0,
 }
 
 
@@ -362,7 +411,9 @@ def score_poultry(attrs: PoultryAttributesInput, product_name: str) -> dict:
 
     # Disease penalty
     disease_raw = (attrs.disease_signs or "").strip().lower()
-    disease_pen = 15.0 if disease_raw not in ("", "none", "none observed", "no") else 0.0
+    disease_pen = (
+        15.0 if disease_raw not in ("", "none", "none observed", "no") else 0.0
+    )
 
     total = _clamp(health_pts + feather_pts + prod_pts + age_wt_pts - disease_pen)
 
@@ -375,49 +426,49 @@ def score_poultry(attrs: PoultryAttributesInput, product_name: str) -> dict:
 # ── Fish Scoring ──────────────────────────────────────────────────────────────
 
 _FRESHNESS_SCORES = {
-    FreshnessLevel.VERY_FRESH:  100.0,
-    FreshnessLevel.FRESH:       80.0,
-    FreshnessLevel.ACCEPTABLE:  55.0,
-    FreshnessLevel.STALE:       25.0,
-    FreshnessLevel.SPOILED:     0.0,
+    FreshnessLevel.VERY_FRESH: 100.0,
+    FreshnessLevel.FRESH: 80.0,
+    FreshnessLevel.ACCEPTABLE: 55.0,
+    FreshnessLevel.STALE: 25.0,
+    FreshnessLevel.SPOILED: 0.0,
 }
 
 _EYE_SCORES = {
-    "clear, bright":    100.0,
-    "clear":            90.0,
-    "bright":           90.0,
-    "slightly cloudy":  55.0,
-    "cloudy":           35.0,
-    "sunken":           10.0,
+    "clear, bright": 100.0,
+    "clear": 90.0,
+    "bright": 90.0,
+    "slightly cloudy": 55.0,
+    "cloudy": 35.0,
+    "sunken": 10.0,
 }
 
 _GILL_SCORES = {
-    "bright red":   100.0,
-    "red":          90.0,
-    "pink":         70.0,
-    "pale pink":    50.0,
-    "brown":        20.0,
-    "grey":         15.0,
-    "grey/brown":   10.0,
+    "bright red": 100.0,
+    "red": 90.0,
+    "pink": 70.0,
+    "pale pink": 50.0,
+    "brown": 20.0,
+    "grey": 15.0,
+    "grey/brown": 10.0,
 }
 
 _ODOR_SCORES = {
-    "fresh sea smell":  100.0,
-    "fresh":            90.0,
-    "mild odor":        60.0,
-    "mild":             60.0,
-    "slightly off":     30.0,
-    "off":              15.0,
-    "foul":             0.0,
+    "fresh sea smell": 100.0,
+    "fresh": 90.0,
+    "mild odor": 60.0,
+    "mild": 60.0,
+    "slightly off": 30.0,
+    "off": 15.0,
+    "foul": 0.0,
 }
 
 _FLESH_SCORES = {
-    "firm, elastic":    100.0,
-    "firm":             90.0,
-    "elastic":          90.0,
-    "slightly soft":    60.0,
-    "soft":             35.0,
-    "mushy":            5.0,
+    "firm, elastic": 100.0,
+    "firm": 90.0,
+    "elastic": 90.0,
+    "slightly soft": 60.0,
+    "soft": 35.0,
+    "mushy": 5.0,
 }
 
 
@@ -461,6 +512,7 @@ def score_fish(attrs: FishAttributesInput, product_name: str) -> dict:
 
 # ── Market Readiness Score ────────────────────────────────────────────────────
 
+
 def market_readiness(quality_score: float, category: str, attrs) -> float:
     """
     Market readiness considers quality score + category-specific
@@ -468,7 +520,9 @@ def market_readiness(quality_score: float, category: str, attrs) -> float:
     """
     base = quality_score
 
-    if category in ("Crop", "Fruit", "Vegetable") and isinstance(attrs, ProduceAttributesInput):
+    if category in ("Crop", "Fruit", "Vegetable") and isinstance(
+        attrs, ProduceAttributesInput
+    ):
         rl = attrs.ripeness_level or RipenessLevel.RIPE
         if rl == RipenessLevel.OVERRIPE:
             base *= 0.60
@@ -492,6 +546,7 @@ def market_readiness(quality_score: float, category: str, attrs) -> float:
 
 
 # ── Main Service Class ────────────────────────────────────────────────────────
+
 
 class QualityAssessmentService:
 
@@ -523,40 +578,40 @@ class QualityAssessmentService:
             result = {"quality_score": 60.0, "market_value": 0.0}
 
         quality_score = result["quality_score"]
-        market_value  = result.get("market_value", 0.0)
+        market_value = result.get("market_value", 0.0)
 
         # ── 2. Market readiness ───────────────────────────────────────────────
         active_attrs = (
-            request.produce_attributes or
-            request.livestock_attributes or
-            request.poultry_attributes or
-            request.fish_attributes
+            request.produce_attributes
+            or request.livestock_attributes
+            or request.poultry_attributes
+            or request.fish_attributes
         )
         mr_score = market_readiness(quality_score, cat, active_attrs)
 
         # ── 3. Derive grade, risk, recommendation ─────────────────────────────
         grade = _grade(quality_score)
-        risk  = _risk(quality_score)
+        risk = _risk(quality_score)
         rec, reason = _recommendation(quality_score, grade)
 
         # ── 4. Build master record ────────────────────────────────────────────
         assessment = QualityAssessment(
-            batch_number            = request.batch_number,
-            product_name            = name,
-            category                = cat,
-            farmer_id               = request.farmer_id,
-            farmer_supplier         = request.farmer_supplier,
-            warehouse_id            = request.warehouse_id,
-            assessed_by             = request.assessed_by,
-            assessment_date         = request.assessment_date or datetime.utcnow(),
-            quality_score           = quality_score,
-            market_readiness_score  = mr_score,
-            estimated_market_value  = market_value,
-            risk_level              = risk,
-            grade_classification    = grade,
-            purchase_recommendation = rec,
-            recommendation_reason   = reason,
-            notes                   = request.notes,
+            batch_number=request.batch_number,
+            product_name=name,
+            category=cat,
+            farmer_id=request.farmer_id,
+            farmer_supplier=request.farmer_supplier,
+            warehouse_id=request.warehouse_id,
+            assessed_by=request.assessed_by,
+            assessment_date=request.assessment_date or datetime.now(timezone.utc),
+            quality_score=quality_score,
+            market_readiness_score=mr_score,
+            estimated_market_value=market_value,
+            risk_level=risk,
+            grade_classification=grade,
+            purchase_recommendation=rec,
+            recommendation_reason=reason,
+            notes=request.notes,
         )
         self.db.add(assessment)
         self.db.flush()  # get assessment_id
@@ -565,70 +620,76 @@ class QualityAssessmentService:
         if cat in ("Crop", "Fruit", "Vegetable"):
             a = request.produce_attributes
             detail = ProduceQualityDetail(
-                assessment_id           = assessment.assessment_id,
-                weight_kg               = a.weight_kg,
-                length_cm               = a.length_cm,
-                width_cm                = a.width_cm,
-                height_cm               = a.height_cm,
-                diameter_cm             = a.diameter_cm,
-                color_quality           = a.color_quality,
-                freshness_score         = a.freshness_score,
-                ripeness_level          = a.ripeness_level.value if a.ripeness_level else None,
-                moisture_content_pct    = a.moisture_content_pct,
-                visible_damage_pct      = a.visible_damage_pct,
-                pest_damage_pct         = a.pest_damage_pct,
-                disease_symptoms        = a.disease_symptoms,
-                estimated_shelf_life_days = result.get("shelf_life_days", a.estimated_shelf_life_days),
+                assessment_id=assessment.assessment_id,
+                weight_kg=a.weight_kg,
+                length_cm=a.length_cm,
+                width_cm=a.width_cm,
+                height_cm=a.height_cm,
+                diameter_cm=a.diameter_cm,
+                color_quality=a.color_quality,
+                freshness_score=a.freshness_score,
+                ripeness_level=(a.ripeness_level.value if a.ripeness_level else None),
+                moisture_content_pct=a.moisture_content_pct,
+                visible_damage_pct=a.visible_damage_pct,
+                pest_damage_pct=a.pest_damage_pct,
+                disease_symptoms=a.disease_symptoms,
+                estimated_shelf_life_days=result.get(
+                    "shelf_life_days", a.estimated_shelf_life_days
+                ),
             )
             self.db.add(detail)
 
         elif cat == "Livestock":
             a = request.livestock_attributes
             detail = LivestockQualityDetail(
-                assessment_id           = assessment.assessment_id,
-                species                 = a.species,
-                breed                   = a.breed,
-                age_months              = a.age_months,
-                weight_kg               = a.weight_kg,
-                height_cm               = a.height_cm,
-                length_cm               = a.length_cm,
-                body_condition_score    = a.body_condition_score,
-                health_status           = a.health_status.value if a.health_status else None,
-                vaccination_status      = a.vaccination_status,
-                disease_indicators      = a.disease_indicators,
-                mobility_assessment     = a.mobility_assessment,
-                feeding_condition       = a.feeding_condition,
-                reproductive_status     = a.reproductive_status,
+                assessment_id=assessment.assessment_id,
+                species=a.species,
+                breed=a.breed,
+                age_months=a.age_months,
+                weight_kg=a.weight_kg,
+                height_cm=a.height_cm,
+                length_cm=a.length_cm,
+                body_condition_score=a.body_condition_score,
+                health_status=(a.health_status.value if a.health_status else None),
+                vaccination_status=a.vaccination_status,
+                disease_indicators=a.disease_indicators,
+                mobility_assessment=a.mobility_assessment,
+                feeding_condition=a.feeding_condition,
+                reproductive_status=a.reproductive_status,
             )
             self.db.add(detail)
 
         elif cat == "Poultry":
             a = request.poultry_attributes
             detail = PoultryQualityDetail(
-                assessment_id           = assessment.assessment_id,
-                species                 = a.species,
-                breed                   = a.breed,
-                weight_kg               = a.weight_kg,
-                age_weeks               = a.age_weeks,
-                health_condition        = a.health_condition.value if a.health_condition else None,
-                egg_production_rate_pct = a.egg_production_rate_pct,
-                feather_condition       = a.feather_condition,
-                disease_signs           = a.disease_signs,
+                assessment_id=assessment.assessment_id,
+                species=a.species,
+                breed=a.breed,
+                weight_kg=a.weight_kg,
+                age_weeks=a.age_weeks,
+                health_condition=(
+                    a.health_condition.value if a.health_condition else None
+                ),
+                egg_production_rate_pct=a.egg_production_rate_pct,
+                feather_condition=a.feather_condition,
+                disease_signs=a.disease_signs,
             )
             self.db.add(detail)
 
         elif cat == "Fish":
             a = request.fish_attributes
             detail = FishQualityDetail(
-                assessment_id   = assessment.assessment_id,
-                species         = a.species,
-                weight_kg       = a.weight_kg,
-                length_cm       = a.length_cm,
-                freshness_level = a.freshness_level.value if a.freshness_level else None,
-                eye_clarity     = a.eye_clarity,
-                gill_condition  = a.gill_condition,
-                odor_assessment = a.odor_assessment,
-                flesh_quality   = a.flesh_quality,
+                assessment_id=assessment.assessment_id,
+                species=a.species,
+                weight_kg=a.weight_kg,
+                length_cm=a.length_cm,
+                freshness_level=(
+                    a.freshness_level.value if a.freshness_level else None
+                ),
+                eye_clarity=a.eye_clarity,
+                gill_condition=a.gill_condition,
+                odor_assessment=a.odor_assessment,
+                flesh_quality=a.flesh_quality,
             )
             self.db.add(detail)
 
@@ -637,9 +698,11 @@ class QualityAssessmentService:
         return assessment
 
     def get_assessment(self, assessment_id: int) -> Optional[QualityAssessment]:
-        return self.db.query(QualityAssessment).filter(
-            QualityAssessment.assessment_id == assessment_id
-        ).first()
+        return (
+            self.db.query(QualityAssessment)
+            .filter(QualityAssessment.assessment_id == assessment_id)
+            .first()
+        )
 
     def list_assessments(
         self,
@@ -659,7 +722,12 @@ class QualityAssessmentService:
             q = q.filter(QualityAssessment.farmer_id == farmer_id)
         if recommendation:
             q = q.filter(QualityAssessment.purchase_recommendation == recommendation)
-        return q.order_by(QualityAssessment.assessment_date.desc()).offset(skip).limit(limit).all()
+        return (
+            q.order_by(QualityAssessment.assessment_date.desc())
+            .offset(skip)
+            .limit(limit)
+            .all()
+        )
 
     def delete_assessment(self, assessment_id: int) -> bool:
         record = self.get_assessment(assessment_id)

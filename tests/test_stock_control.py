@@ -1,20 +1,23 @@
-import pytest
-from datetime import datetime
-from pathlib import Path
 import tempfile
-import pandas as pd
+from pathlib import Path
 
+import pandas as pd
+import pytest
+
+from app.models.stock_models import ImportLog, StockAlert
 from app.repositories.stock_repo import StockRepository
-from app.services.stock_service import StockService
 from app.services.import_service import ImportService
-from app.models.stock_models import Farmer, Product, Warehouse, StockTransaction, StockBalance, StockAlert, ImportLog
+from app.services.stock_service import StockService
+
 
 def test_stock_in_increases_balance(db_session):
     repo = StockRepository(db_session)
     service = StockService(db_session)
 
     # Setup seed entities
-    farmer = repo.create_farmer(full_name="Kojo Annan", region="Ashanti", district="Ejura")
+    farmer = repo.create_farmer(
+        full_name="Kojo Annan", region="Ashanti", district="Ejura"
+    )
     product = repo.create_product(product_name="Maize", category="Grains", unit="kg")
 
     # Record stock in
@@ -25,7 +28,7 @@ def test_stock_in_increases_balance(db_session):
         transaction_type="STOCK_IN",
         quantity=100.0,
         unit="kg",
-        reference_note="Harvest A"
+        reference_note="Harvest A",
     )
 
     # Assert transaction
@@ -53,7 +56,7 @@ def test_stock_out_decreases_balance(db_session):
         warehouse_id=None,
         transaction_type="STOCK_IN",
         quantity=50.0,
-        unit="piece"
+        unit="piece",
     )
 
     # Record stock out
@@ -63,7 +66,7 @@ def test_stock_out_decreases_balance(db_session):
         warehouse_id=None,
         transaction_type="STOCK_OUT",
         quantity=20.0,
-        unit="piece"
+        unit="piece",
     )
 
     # Assert balance decreased
@@ -86,7 +89,7 @@ def test_negative_stock_prevention(db_session):
             warehouse_id=None,
             transaction_type="STOCK_OUT",
             quantity=10.0,
-            unit="piece"
+            unit="piece",
         )
     assert "Negative stock not allowed" in str(excinfo.value)
 
@@ -95,11 +98,17 @@ def test_low_stock_alert_triggers(db_session):
     repo = StockRepository(db_session)
     service = StockService(db_session)
 
-    farmer = repo.create_farmer(full_name="Yaw Boateng", region="Eastern", district="Suhum")
-    product = repo.create_product(product_name="Cocoa Beans", category="Cash Crops", unit="kg")
+    farmer = repo.create_farmer(
+        full_name="Yaw Boateng", region="Eastern", district="Suhum"
+    )
+    product = repo.create_product(
+        product_name="Cocoa Beans", category="Cash Crops", unit="kg"
+    )
 
     # Setup reorder level
-    balance = repo.get_or_create_balance(farmer.farmer_id, product.product_id, None, reorder_level=20.0)
+    balance = repo.get_or_create_balance(
+        farmer.farmer_id, product.product_id, None, reorder_level=20.0
+    )
     assert balance.current_stock == 0.0
 
     # Stock in below reorder level (say 15kg) -> triggers alert because 15 <= 20
@@ -109,11 +118,13 @@ def test_low_stock_alert_triggers(db_session):
         warehouse_id=None,
         transaction_type="STOCK_IN",
         quantity=15.0,
-        unit="kg"
+        unit="kg",
     )
 
     # Check alert exists
-    alert = repo.get_active_alert(farmer.farmer_id, product.product_id, None, "LOW_STOCK")
+    alert = repo.get_active_alert(
+        farmer.farmer_id, product.product_id, None, "LOW_STOCK"
+    )
     assert alert is not None
     assert "Low stock alert" in alert.alert_message
 
@@ -124,11 +135,15 @@ def test_low_stock_alert_triggers(db_session):
         warehouse_id=None,
         transaction_type="STOCK_IN",
         quantity=10.0,
-        unit="kg"
+        unit="kg",
     )
 
     # Check alert is resolved
-    alert_after = db_session.query(StockAlert).filter(StockAlert.alert_id == alert.alert_id).first()
+    alert_after = (
+        db_session.query(StockAlert)
+        .filter(StockAlert.alert_id == alert.alert_id)
+        .first()
+    )
     assert alert_after.is_resolved is True
 
 
@@ -136,15 +151,29 @@ def test_current_stock_recalculation(db_session):
     repo = StockRepository(db_session)
     service = StockService(db_session)
 
-    farmer = repo.create_farmer(full_name="Kofi Mensah", region="Bono", district="Sunyani")
+    farmer = repo.create_farmer(
+        full_name="Kofi Mensah", region="Bono", district="Sunyani"
+    )
     product = repo.create_product(product_name="Soybeans", category="Grains", unit="kg")
 
     # Add transaction in (100)
-    service.record_movement(farmer.farmer_id, product.product_id, None, "STOCK_IN", 100.0, "kg")
+    service.record_movement(
+        farmer.farmer_id, product.product_id, None, "STOCK_IN", 100.0, "kg"
+    )
     # Add transaction out (40)
-    service.record_movement(farmer.farmer_id, product.product_id, None, "STOCK_OUT", 40.0, "kg")
+    service.record_movement(
+        farmer.farmer_id, product.product_id, None, "STOCK_OUT", 40.0, "kg"
+    )
     # Add adjustment (+10)
-    service.record_movement(farmer.farmer_id, product.product_id, None, "ADJUSTMENT", 10.0, "kg", reference_note="increase")
+    service.record_movement(
+        farmer.farmer_id,
+        product.product_id,
+        None,
+        "ADJUSTMENT",
+        10.0,
+        "kg",
+        reference_note="increase",
+    )
 
     # Force current stock field corruption to test recalculate
     balance = repo.get_balance(farmer.farmer_id, product.product_id, None)
@@ -174,11 +203,16 @@ def test_invalid_and_duplicate_file_import(db_session):
     # 3. Invalid row (missing unit)
     # 4. Invalid row (negative quantity where forbidden)
     data = {
-        "Farmer Name": ["Abena Osei", "Abena Osei", "Abena Osei", "Abena Osei"],
+        "Farmer Name": [
+            "Abena Osei",
+            "Abena Osei",
+            "Abena Osei",
+            "Abena Osei",
+        ],
         "Product Name": ["Cassava", "Cassava", "Cassava", "Cassava"],
         "Quantity": [100.0, 100.0, 50.0, -10.0],
         "Unit": ["kg", "kg", None, "kg"],
-        "Transaction Type": ["STOCK_IN", "STOCK_IN", "STOCK_IN", "STOCK_IN"]
+        "Transaction Type": ["STOCK_IN", "STOCK_IN", "STOCK_IN", "STOCK_IN"],
     }
     df = pd.DataFrame(data)
 

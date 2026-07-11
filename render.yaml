@@ -8,3 +8,45 @@ services:
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.0
+      - key: ENVIRONMENT
+        value: production
+      - key: DATABASE_URL
+        sync: false
+      - key: GATEWAY_SECRET_KEY
+        sync: false
+      - key: GATEWAY_REQUEST_SIGNING_SECRET
+        sync: false
+      - key: GATEWAY_ALLOWED_ORIGINS
+        sync: false
+      - key: GATEWAY_JWT_ALGORITHM
+        sync: false
+      - key: GATEWAY_JWT_EXPIRES_MINUTES
+        sync: false
+      - key: GATEWAY_API_KEY_EXPIRY_DAYS
+        sync: false
+      - key: GATEWAY_REQUEST_BODY_LIMIT_BYTES
+        sync: false
+      - key: GATEWAY_FILE_SIZE_LIMIT_BYTES
+        sync: false
+      - key: GATEWAY_CACHE_TTL_SECONDS
+        sync: false
+      - key: GATEWAY_RATE_LIMIT_MINUTE
+        sync: false
+      - key: GATEWAY_RATE_LIMIT_HOUR
+        sync: false
+      - key: GATEWAY_RATE_LIMIT_DAY
+        sync: false
+      - key: GATEWAY_ALLOWED_IPS
+        sync: false
+      - key: GATEWAY_CORS_ALLOW_CREDENTIALS
+        sync: false
+      - key: GATEWAY_UPLOAD_DIR
+        sync: false
+      - key: DATA_RAW_DIR
+        sync: false
+      - key: DATA_PROCESSED_DIR
+        sync: false
+      - key: DATA_ERROR_LOGS_DIR
+        sync: false
+      - key: AI_PROVIDER_TIMEOUT_SECONDS
+        sync: false

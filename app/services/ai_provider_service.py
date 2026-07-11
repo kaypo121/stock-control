@@ -144,15 +144,24 @@ class AIProviderService:
             status.HTTP_404_NOT_FOUND,
             "PROVIDER_NOT_FOUND",
             "The requested AI provider is not supported by the gateway.",
-            {"provider": provider_name, "supportedProviders": sorted(PROVIDER_DEFINITIONS)},
+            {
+                "provider": provider_name,
+                "supportedProviders": sorted(PROVIDER_DEFINITIONS),
+            },
         )
 
     def resolve_provider(self, provider_name: str) -> Dict[str, Any]:
         canonical = self.canonical_provider(provider_name)
         definition = PROVIDER_DEFINITIONS[canonical]
-        api_key = os.getenv(definition.env_api_key, "") if definition.env_api_key else ""
-        base_url = os.getenv(definition.env_base_url, definition.default_base_url).rstrip("/")
-        configured = bool(base_url) and (bool(api_key) if definition.requires_api_key else True)
+        api_key = (
+            os.getenv(definition.env_api_key, "") if definition.env_api_key else ""
+        )
+        base_url = os.getenv(
+            definition.env_base_url, definition.default_base_url
+        ).rstrip("/")
+        configured = bool(base_url) and (
+            bool(api_key) if definition.requires_api_key else True
+        )
         return {
             "canonicalName": canonical,
             "displayName": definition.display_name,
@@ -193,26 +202,46 @@ class AIProviderService:
             for provider in self.catalog()
         ]
 
-    async def chat_completion(self, payload: ChatCompletionRequest, request_id: str, trace_id: str) -> Dict[str, Any]:
+    async def chat_completion(
+        self, payload: ChatCompletionRequest, request_id: str, trace_id: str
+    ) -> Dict[str, Any]:
         provider = self.require_provider(payload.provider)
         if provider["family"] == "openai_compatible":
-            return await self._openai_compatible_completion(provider, payload, request_id, trace_id)
+            return await self._openai_compatible_completion(
+                provider, payload, request_id, trace_id
+            )
         if provider["family"] == "anthropic":
-            return await self._anthropic_completion(provider, payload, request_id, trace_id)
+            return await self._anthropic_completion(
+                provider, payload, request_id, trace_id
+            )
         if provider["family"] == "gemini":
-            return await self._gemini_completion(provider, payload, request_id, trace_id)
+            return await self._gemini_completion(
+                provider, payload, request_id, trace_id
+            )
         if provider["family"] == "ollama":
-            return await self._ollama_completion(provider, payload, request_id, trace_id)
-        raise GatewayAPIError(status.HTTP_500_INTERNAL_SERVER_ERROR, "PROVIDER_FAMILY_UNSUPPORTED", "Unsupported provider family.")
+            return await self._ollama_completion(
+                provider, payload, request_id, trace_id
+            )
+        raise GatewayAPIError(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            "PROVIDER_FAMILY_UNSUPPORTED",
+            "Unsupported provider family.",
+        )
 
-    async def stream_chat_completion(self, payload: ChatCompletionRequest, request_id: str, trace_id: str) -> AsyncIterator[str]:
+    async def stream_chat_completion(
+        self, payload: ChatCompletionRequest, request_id: str, trace_id: str
+    ) -> AsyncIterator[str]:
         provider = self.require_provider(payload.provider)
         if provider["family"] == "openai_compatible" and provider["streamSupport"]:
-            async for chunk in self._stream_openai_compatible(provider, payload, request_id, trace_id):
+            async for chunk in self._stream_openai_compatible(
+                provider, payload, request_id, trace_id
+            ):
                 yield chunk
             return
         if provider["family"] == "ollama" and provider["streamSupport"]:
-            async for chunk in self._stream_ollama(provider, payload, request_id, trace_id):
+            async for chunk in self._stream_ollama(
+                provider, payload, request_id, trace_id
+            ):
                 yield chunk
             return
 
@@ -277,7 +306,9 @@ class AIProviderService:
         request_id: str,
         trace_id: str,
     ) -> Dict[str, Any]:
-        system_messages = [message.content for message in payload.messages if message.role == "system"]
+        system_messages = [
+            message.content for message in payload.messages if message.role == "system"
+        ]
         messages = [
             {
                 "role": "assistant" if message.role == "assistant" else "user",
@@ -296,7 +327,9 @@ class AIProviderService:
         body.update(self._provider_options(payload))
         headers = self._default_headers(provider, request_id, trace_id)
         headers["x-api-key"] = provider["apiKey"]
-        headers["anthropic-version"] = payload.metadata.get("anthropicVersion", "2023-06-01")
+        headers["anthropic-version"] = payload.metadata.get(
+            "anthropicVersion", "2023-06-01"
+        )
         headers.pop("Authorization", None)
         response_json = await self._post_json(
             url=f"{provider['baseUrl']}/messages",
@@ -304,7 +337,11 @@ class AIProviderService:
             json_body=body,
         )
         content_blocks = response_json.get("content") or []
-        text = "".join(block.get("text", "") for block in content_blocks if block.get("type") == "text")
+        text = "".join(
+            block.get("text", "")
+            for block in content_blocks
+            if block.get("type") == "text"
+        )
         return {
             "provider": provider["canonicalName"],
             "model": response_json.get("model", payload.model),
@@ -312,7 +349,12 @@ class AIProviderService:
             "object": response_json.get("type", "message"),
             "created": response_json.get("created_at"),
             "message": {"role": "assistant", "content": text},
-            "choices": [{"message": {"role": "assistant", "content": text}, "finish_reason": response_json.get("stop_reason")}],
+            "choices": [
+                {
+                    "message": {"role": "assistant", "content": text},
+                    "finish_reason": response_json.get("stop_reason"),
+                }
+            ],
             "usage": response_json.get("usage", {}),
             "finishReason": response_json.get("stop_reason"),
         }
@@ -325,7 +367,9 @@ class AIProviderService:
         trace_id: str,
     ) -> Dict[str, Any]:
         contents = []
-        system_text = "\n".join(message.content for message in payload.messages if message.role == "system")
+        system_text = "\n".join(
+            message.content for message in payload.messages if message.role == "system"
+        )
         for message in payload.messages:
             if message.role == "system":
                 continue
@@ -339,7 +383,9 @@ class AIProviderService:
             body["generationConfig"] = generation_config
         response_json = await self._post_json(
             url=f"{provider['baseUrl']}/{payload.model}:generateContent?key={provider['apiKey']}",
-            headers=self._default_headers(provider, request_id, trace_id, include_auth=False),
+            headers=self._default_headers(
+                provider, request_id, trace_id, include_auth=False
+            ),
             json_body=body,
         )
         candidates = response_json.get("candidates") or [{}]
@@ -353,7 +399,12 @@ class AIProviderService:
             "object": "generateContentResponse",
             "created": None,
             "message": {"role": "assistant", "content": text},
-            "choices": [{"message": {"role": "assistant", "content": text}, "finish_reason": candidates[0].get("finishReason")}],
+            "choices": [
+                {
+                    "message": {"role": "assistant", "content": text},
+                    "finish_reason": candidates[0].get("finishReason"),
+                }
+            ],
             "usage": {
                 "promptTokenCount": usage.get("promptTokenCount"),
                 "candidatesTokenCount": usage.get("candidatesTokenCount"),
@@ -377,7 +428,9 @@ class AIProviderService:
         body.update(self._provider_options(payload))
         response_json = await self._post_json(
             url=f"{provider['baseUrl']}/api/chat",
-            headers=self._default_headers(provider, request_id, trace_id, include_auth=False),
+            headers=self._default_headers(
+                provider, request_id, trace_id, include_auth=False
+            ),
             json_body=body,
         )
         message = response_json.get("message") or {}
@@ -387,8 +440,16 @@ class AIProviderService:
             "id": response_json.get("created_at"),
             "object": "chat.completion",
             "created": response_json.get("created_at"),
-            "message": {"role": message.get("role", "assistant"), "content": message.get("content", "")},
-            "choices": [{"message": message, "finish_reason": "stop" if response_json.get("done") else None}],
+            "message": {
+                "role": message.get("role", "assistant"),
+                "content": message.get("content", ""),
+            },
+            "choices": [
+                {
+                    "message": message,
+                    "finish_reason": ("stop" if response_json.get("done") else None),
+                }
+            ],
             "usage": response_json.get("usage", {}),
             "finishReason": "stop" if response_json.get("done") else None,
         }
@@ -408,7 +469,12 @@ class AIProviderService:
         body.update(self._provider_options(payload))
         headers = self._default_headers(provider, request_id, trace_id)
         async with httpx.AsyncClient(timeout=AI_PROVIDER_TIMEOUT_SECONDS) as client:
-            async with client.stream("POST", f"{provider['baseUrl']}/chat/completions", headers=headers, json=body) as response:
+            async with client.stream(
+                "POST",
+                f"{provider['baseUrl']}/chat/completions",
+                headers=headers,
+                json=body,
+            ) as response:
                 await self._raise_for_status(response)
                 async for line in response.aiter_lines():
                     if not line or not line.startswith("data:"):
@@ -446,9 +512,16 @@ class AIProviderService:
             "stream": True,
         }
         body.update(self._provider_options(payload))
-        headers = self._default_headers(provider, request_id, trace_id, include_auth=False)
+        headers = self._default_headers(
+            provider, request_id, trace_id, include_auth=False
+        )
         async with httpx.AsyncClient(timeout=AI_PROVIDER_TIMEOUT_SECONDS) as client:
-            async with client.stream("POST", f"{provider['baseUrl']}/api/chat", headers=headers, json=body) as response:
+            async with client.stream(
+                "POST",
+                f"{provider['baseUrl']}/api/chat",
+                headers=headers,
+                json=body,
+            ) as response:
                 await self._raise_for_status(response)
                 async for line in response.aiter_lines():
                     if not line:
@@ -467,7 +540,9 @@ class AIProviderService:
                     yield f"data: {json.dumps(body_chunk)}\n\n"
         yield "event: complete\ndata: [DONE]\n\n"
 
-    async def _post_json(self, url: str, headers: Dict[str, str], json_body: Dict[str, Any]) -> Dict[str, Any]:
+    async def _post_json(
+        self, url: str, headers: Dict[str, str], json_body: Dict[str, Any]
+    ) -> Dict[str, Any]:
         async with httpx.AsyncClient(timeout=AI_PROVIDER_TIMEOUT_SECONDS) as client:
             response = await client.post(url, headers=headers, json=json_body)
         if response.status_code >= 400:
@@ -489,7 +564,9 @@ class AIProviderService:
         text = body.decode("utf-8", errors="ignore")
         self._raise_error_response(response, response_text=text)
 
-    def _raise_error_response(self, response: httpx.Response, response_text: Optional[str] = None) -> None:
+    def _raise_error_response(
+        self, response: httpx.Response, response_text: Optional[str] = None
+    ) -> None:
         text = response_text if response_text is not None else response.text
         detail: Any
         try:

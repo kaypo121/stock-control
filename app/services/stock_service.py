@@ -1,11 +1,13 @@
-from datetime import datetime
-from typing import List, Optional
+from datetime import datetime, timezone
+from typing import Optional
+
 from sqlalchemy.orm import Session
 
-from app.repositories.stock_repo import StockRepository
-from app.models.stock_models import StockTransaction, StockBalance, StockAlert
-from app.utils.unit_converter import convert_quantity, get_unit_category_and_standard_name
 from app.config import ALLOW_NEGATIVE_STOCK
+from app.models.stock_models import StockBalance, StockTransaction
+from app.repositories.stock_repo import StockRepository
+from app.utils.unit_converter import convert_quantity
+
 
 class StockService:
     def __init__(self, db: Session):
@@ -18,13 +20,13 @@ class StockService:
         product_id: int,
         warehouse_id: Optional[int],
         transaction_type: str,  # STOCK_IN, STOCK_OUT, DAMAGE, RETURN, TRANSFER, ADJUSTMENT
-        quantity: float,        # Always positive on input; direction determined by type
+        quantity: float,  # Always positive on input; direction determined by type
         unit: str,
         transaction_date: Optional[datetime] = None,
-        reference_note: Optional[str] = None
+        reference_note: Optional[str] = None,
     ) -> StockTransaction:
         if not transaction_date:
-            transaction_date = datetime.utcnow()
+            transaction_date = datetime.now(timezone.utc)
 
         # 1. Verify foreign keys exist
         farmer = self.repo.get_farmer_by_id(farmer_id)
@@ -47,7 +49,9 @@ class StockService:
         except ValueError as ue:
             # Trigger unit mismatch alert in the database and raise error
             alert_msg = f"Unit mismatch: Transaction unit '{unit}' is incompatible with product '{product.product_name}' base unit '{base_unit}'."
-            self.repo.create_alert(farmer_id, product_id, warehouse_id, "UNIT_MISMATCH", alert_msg)
+            self.repo.create_alert(
+                farmer_id, product_id, warehouse_id, "UNIT_MISMATCH", alert_msg
+            )
             raise ValueError(alert_msg) from ue
 
         # 3. Determine flow direction
@@ -55,7 +59,7 @@ class StockService:
         # STOCK_IN, RETURN, positive ADJUSTMENT (indicated by positive quantity) are Additions.
         # STOCK_OUT, DAMAGE, TRANSFER, negative ADJUSTMENT are Deductions.
         is_deduction = tx_type_upper in ["STOCK_OUT", "DAMAGE", "TRANSFER"]
-        
+
         # If type is ADJUSTMENT, we check the sign of quantity to see if it is a deduction
         if tx_type_upper == "ADJUSTMENT" and quantity < 0:
             is_deduction = True
@@ -86,12 +90,12 @@ class StockService:
             quantity=quantity,
             unit=unit,
             transaction_date=transaction_date,
-            reference_note=reference_note
+            reference_note=reference_note,
         )
 
         # 7. Update current stock balance
         balance.current_stock = new_stock
-        balance.last_updated = datetime.utcnow()
+        balance.last_updated = datetime.now(timezone.utc)
         self.db.commit()
 
         # 8. Check reorder thresholds and generate alerts
@@ -99,18 +103,25 @@ class StockService:
 
         return tx
 
-    def recalculate_balance(self, farmer_id: int, product_id: int, warehouse_id: Optional[int]) -> float:
+    def recalculate_balance(
+        self, farmer_id: int, product_id: int, warehouse_id: Optional[int]
+    ) -> float:
         """Recalculates the stock balance from the complete transaction history."""
         balance = self.repo.get_or_create_balance(farmer_id, product_id, warehouse_id)
         product = self.repo.get_product_by_id(product_id)
         base_unit = product.unit
 
         # Fetch all transactions sorted chronologically
-        txs = self.db.query(StockTransaction).filter(
-            StockTransaction.farmer_id == farmer_id,
-            StockTransaction.product_id == product_id,
-            StockTransaction.warehouse_id == warehouse_id
-        ).order_by(StockTransaction.transaction_date.asc()).all()
+        txs = (
+            self.db.query(StockTransaction)
+            .filter(
+                StockTransaction.farmer_id == farmer_id,
+                StockTransaction.product_id == product_id,
+                StockTransaction.warehouse_id == warehouse_id,
+            )
+            .order_by(StockTransaction.transaction_date.asc())
+            .all()
+        )
 
         current_qty = balance.opening_stock
         for tx in txs:
@@ -133,7 +144,10 @@ class StockService:
                 # To be robust, let's treat reference notes containing 'deduct' or similar as negative,
                 # or verify if quantity was originally recorded with a sign.
                 # In our standard, ADJUSTMENT quantity in transaction is positive. Let's see if the note says deduction:
-                is_subtraction = "deduct" in str(tx.reference_note).lower() or "decrease" in str(tx.reference_note).lower()
+                is_subtraction = (
+                    "deduct" in str(tx.reference_note).lower()
+                    or "decrease" in str(tx.reference_note).lower()
+                )
                 if is_subtraction:
                     current_qty -= converted_qty
                 else:
@@ -141,7 +155,7 @@ class StockService:
 
         # Save recalculated balance
         balance.current_stock = current_qty
-        balance.last_updated = datetime.utcnow()
+        balance.last_updated = datetime.now(timezone.utc)
         self.db.commit()
 
         self._check_alerts(balance)
@@ -150,12 +164,19 @@ class StockService:
     def _check_alerts(self, balance: StockBalance):
         """Checks if current balance is below reorder level and manages alerts."""
         active_alert = self.repo.get_active_alert(
-            balance.farmer_id, balance.product_id, balance.warehouse_id, "LOW_STOCK"
+            balance.farmer_id,
+            balance.product_id,
+            balance.warehouse_id,
+            "LOW_STOCK",
         )
 
         product_name = balance.product.product_name
         farmer_name = balance.farmer.full_name
-        warehouse_suffix = f" in warehouse '{balance.warehouse.warehouse_name}'" if balance.warehouse else ""
+        warehouse_suffix = (
+            f" in warehouse '{balance.warehouse.warehouse_name}'"
+            if balance.warehouse
+            else ""
+        )
 
         if balance.current_stock <= balance.reorder_level:
             # Trigger alert if not already active
@@ -166,7 +187,11 @@ class StockService:
                     f"(reorder level: {balance.reorder_level} {balance.product.unit})."
                 )
                 self.repo.create_alert(
-                    balance.farmer_id, balance.product_id, balance.warehouse_id, "LOW_STOCK", msg
+                    balance.farmer_id,
+                    balance.product_id,
+                    balance.warehouse_id,
+                    "LOW_STOCK",
+                    msg,
                 )
         else:
             # Resolve alert if stock has recovered

@@ -1,40 +1,41 @@
 """
 generate_synthetic_data.py
 ==========================
-1. Consolidates duplicate products (keeps Tomato, Yam, Maize, Rice as the canonical ones)
-2. Generates realistic synthetic transaction datasets for all 4 focus crops
-   based on Ghana's agricultural seasons, regional production patterns, and
-   market dynamics (1993–2024)
-3. Saves the datasets as CSVs in the datasets folder
-4. Seeds all transactions into the stock database
+1. Consolidates duplicate products, keeping Tomato, Yam, Maize, and Rice as
+   canonical names.
+2. Generates realistic synthetic transaction datasets for the four focus crops
+   using Ghana seasonal patterns, regional production, and market dynamics.
+3. Saves the datasets as CSVs in the datasets folder.
+4. Seeds all transactions into the stock database.
 
 Ghana Seasonal Context:
-  - Major season (season 1): March–July  (harvest peak: June-July)
+  - Major season (season 1): March–July (harvest peak: June-July)
   - Minor season (season 2): August–November (harvest peak: Oct-Nov)
   - Tomato: Northern Ghana major producer; dry-season farming Jan-Apr
   - Yam: Northern/Brong-Ahafo; harvest Oct-Jan
   - Maize: Nationwide; dual seasons
-  - Rice: Volta/Northern; harvest Nov-Jan (irrigated year-round in some areas)
+  - Rice: Volta/Northern; harvest Nov-Jan
+    (irrigated year-round in some areas)
 
 Run:
     python generate_synthetic_data.py
 """
 
-import sys
 import random
-import math
+from datetime import datetime, timezone
 from pathlib import Path
-from datetime import datetime, timedelta
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-
-import pandas as pd
 import numpy as np
+import pandas as pd
 from sqlalchemy.orm import Session
 
-from app.database import engine, Base, SessionLocal
+from app.database import Base, SessionLocal, engine
 from app.models.stock_models import (
-    Farmer, Product, Warehouse, StockTransaction, StockBalance, StockAlert, ImportLog
+    Farmer,
+    Product,
+    StockBalance,
+    StockTransaction,
+    Warehouse,
 )
 
 Base.metadata.create_all(bind=engine)
@@ -47,62 +48,78 @@ OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 # ── Canonical product definitions ────────────────────────────────────────────
 CANONICAL = {
-    "Tomato": {"unit": "crate",  "category": "Vegetables",    "description": "Fresh garden tomatoes (Ghana standard 25 kg crate)"},
-    "Yam":    {"unit": "kg",     "category": "Roots & Tubers","description": "Yam tubers – puna, water, and white yam varieties"},
-    "Maize":  {"unit": "kg",     "category": "Grains",        "description": "Maize grain – white and yellow varieties"},
-    "Rice":   {"unit": "kg",     "category": "Grains",        "description": "Paddy and milled rice"},
+    "Tomato": {
+        "unit": "crate",
+        "category": "Vegetables",
+        "description": "Fresh garden tomatoes (Ghana standard 25 kg crate)",
+    },
+    "Yam": {
+        "unit": "kg",
+        "category": "Roots & Tubers",
+        "description": "Yam tubers – puna, water, and white yam varieties",
+    },
+    "Maize": {
+        "unit": "kg",
+        "category": "Grains",
+        "description": "Maize grain – white and yellow varieties",
+    },
+    "Rice": {
+        "unit": "kg",
+        "category": "Grains",
+        "description": "Paddy and milled rice",
+    },
 }
 
 # Duplicate product names that will be merged into the canonical ones
 DUPLICATES = {
-    "Tomato":  ["Tomato Local"],
-    "Yam":     ["Yam Puna"],
-    "Maize":   ["White Maize", "Maize Yellow"],
-    "Rice":    ["Rice Local"],
+    "Tomato": ["Tomato Local"],
+    "Yam": ["Yam Puna"],
+    "Maize": ["White Maize", "Maize Yellow"],
+    "Rice": ["Rice Local"],
 }
 
 # ── Regional production weights (based on MoFA data patterns) ────────────────
 # Keys match the regional cooperative farmer names seeded earlier
 REGIONAL_WEIGHTS = {
     "Tomato": {
-        "Northern":      0.35,  # Dominant tomato region
-        "Upper East":    0.18,
-        "Brong-Ahafo":   0.12,   # Techiman market hub
-        "Ashanti":       0.10,
+        "Northern": 0.35,  # Dominant tomato region
+        "Upper East": 0.18,
+        "Brong-Ahafo": 0.12,  # Techiman market hub
+        "Ashanti": 0.10,
         "Greater Accra": 0.08,
-        "Volta":         0.07,
-        "Eastern":       0.05,
-        "Central":       0.03,
-        "Western":       0.02,
+        "Volta": 0.07,
+        "Eastern": 0.05,
+        "Central": 0.03,
+        "Western": 0.02,
     },
     "Yam": {
-        "Brong-Ahafo":   0.32,
-        "Northern":      0.28,
-        "Volta":         0.15,
-        "Ashanti":       0.12,
-        "Eastern":       0.08,
-        "Upper East":    0.03,
-        "Central":       0.02,
+        "Brong-Ahafo": 0.32,
+        "Northern": 0.28,
+        "Volta": 0.15,
+        "Ashanti": 0.12,
+        "Eastern": 0.08,
+        "Upper East": 0.03,
+        "Central": 0.02,
     },
     "Maize": {
-        "Ashanti":       0.22,
-        "Brong-Ahafo":   0.20,
-        "Northern":      0.16,
-        "Eastern":       0.12,
-        "Volta":         0.10,
-        "Western":       0.08,
-        "Central":       0.06,
+        "Ashanti": 0.22,
+        "Brong-Ahafo": 0.20,
+        "Northern": 0.16,
+        "Eastern": 0.12,
+        "Volta": 0.10,
+        "Western": 0.08,
+        "Central": 0.06,
         "Greater Accra": 0.04,
-        "Upper East":    0.02,
+        "Upper East": 0.02,
     },
     "Rice": {
-        "Northern":      0.30,
-        "Upper East":    0.20,
-        "Upper West":    0.18,
-        "Volta":         0.15,
-        "Ashanti":       0.08,
-        "Brong-Ahafo":   0.06,
-        "Eastern":       0.03,
+        "Northern": 0.30,
+        "Upper East": 0.20,
+        "Upper West": 0.18,
+        "Volta": 0.15,
+        "Ashanti": 0.08,
+        "Brong-Ahafo": 0.06,
+        "Eastern": 0.03,
     },
 }
 
@@ -111,27 +128,63 @@ REGIONAL_WEIGHTS = {
 SEASONAL_PROFILE = {
     "Tomato": {
         # Dry-season (irrigated): Jan-Apr peak; dip in rainy season
-        1: 1.8, 2: 2.0, 3: 1.7, 4: 1.4,
-        5: 0.7, 6: 0.5, 7: 0.4, 8: 0.6,
-        9: 0.8, 10: 1.1, 11: 1.3, 12: 1.5,
+        1: 1.8,
+        2: 2.0,
+        3: 1.7,
+        4: 1.4,
+        5: 0.7,
+        6: 0.5,
+        7: 0.4,
+        8: 0.6,
+        9: 0.8,
+        10: 1.1,
+        11: 1.3,
+        12: 1.5,
     },
     "Yam": {
         # Main harvest: Oct-Jan
-        1: 1.4, 2: 1.0, 3: 0.7, 4: 0.5,
-        5: 0.4, 6: 0.5, 7: 0.6, 8: 0.8,
-        9: 1.0, 10: 1.6, 11: 1.8, 12: 1.7,
+        1: 1.4,
+        2: 1.0,
+        3: 0.7,
+        4: 0.5,
+        5: 0.4,
+        6: 0.5,
+        7: 0.6,
+        8: 0.8,
+        9: 1.0,
+        10: 1.6,
+        11: 1.8,
+        12: 1.7,
     },
     "Maize": {
         # Season 1 harvest: Jul-Aug; Season 2 harvest: Nov-Dec
-        1: 0.6, 2: 0.5, 3: 0.6, 4: 0.8,
-        5: 0.9, 6: 1.0, 7: 1.6, 8: 1.8,
-        9: 1.2, 10: 1.0, 11: 1.5, 12: 1.3,
+        1: 0.6,
+        2: 0.5,
+        3: 0.6,
+        4: 0.8,
+        5: 0.9,
+        6: 1.0,
+        7: 1.6,
+        8: 1.8,
+        9: 1.2,
+        10: 1.0,
+        11: 1.5,
+        12: 1.3,
     },
     "Rice": {
         # Main harvest: Nov-Feb (dry season / Volta irrigated)
-        1: 1.6, 2: 1.4, 3: 1.0, 4: 0.7,
-        5: 0.6, 6: 0.6, 7: 0.7, 8: 0.9,
-        9: 1.0, 10: 1.1, 11: 1.8, 12: 1.7,
+        1: 1.6,
+        2: 1.4,
+        3: 1.0,
+        4: 0.7,
+        5: 0.6,
+        6: 0.6,
+        7: 0.7,
+        8: 0.9,
+        9: 1.0,
+        10: 1.1,
+        11: 1.8,
+        12: 1.7,
     },
 }
 
@@ -139,20 +192,48 @@ SEASONAL_PROFILE = {
 # Based on Ghana MoFA published figures, interpolated for 1993-2024
 ANNUAL_PRODUCTION_MT = {
     "Tomato": {
-        1993: 120000, 1995: 130000, 2000: 155000, 2005: 175000,
-        2010: 195000, 2015: 210000, 2017: 220000, 2020: 235000, 2024: 250000,
+        1993: 120000,
+        1995: 130000,
+        2000: 155000,
+        2005: 175000,
+        2010: 195000,
+        2015: 210000,
+        2017: 220000,
+        2020: 235000,
+        2024: 250000,
     },
     "Yam": {
-        1993: 2100000, 1995: 2300000, 2000: 2700000, 2005: 3200000,
-        2010: 4200000, 2015: 5800000, 2017: 6300000, 2020: 7100000, 2024: 7800000,
+        1993: 2100000,
+        1995: 2300000,
+        2000: 2700000,
+        2005: 3200000,
+        2010: 4200000,
+        2015: 5800000,
+        2017: 6300000,
+        2020: 7100000,
+        2024: 7800000,
     },
     "Maize": {
-        1993: 850000, 1995: 950000, 2000: 1100000, 2005: 1300000,
-        2010: 1600000, 2015: 1850000, 2017: 2000000, 2020: 2200000, 2024: 2400000,
+        1993: 850000,
+        1995: 950000,
+        2000: 1100000,
+        2005: 1300000,
+        2010: 1600000,
+        2015: 1850000,
+        2017: 2000000,
+        2020: 2200000,
+        2024: 2400000,
     },
     "Rice": {
-        1993: 120000, 1995: 140000, 2000: 175000, 2005: 210000,
-        2010: 280000, 2015: 320000, 2017: 350000, 2020: 390000, 2024: 430000,
+        1993: 120000,
+        1995: 140000,
+        2000: 175000,
+        2005: 210000,
+        2010: 280000,
+        2015: 320000,
+        2017: 350000,
+        2020: 390000,
+        2024: 430000,
     },
 }
 
@@ -173,7 +254,9 @@ def interpolate_annual(crop: str, year: int) -> float:
     return data[years[-1]]
 
 
-def generate_crop_dataset(crop: str, start_year: int = 1993, end_year: int = 2024) -> pd.DataFrame:
+def generate_crop_dataset(
+    crop: str, start_year: int = 1993, end_year: int = 2024
+) -> pd.DataFrame:
     """
     Generates a realistic monthly transaction dataset for a crop.
     Returns a DataFrame with columns matching the stock system's import schema.
@@ -185,13 +268,13 @@ def generate_crop_dataset(crop: str, start_year: int = 1993, end_year: int = 202
     for year in range(start_year, end_year + 1):
         annual_mt = interpolate_annual(crop, year)
         # Add ±8% inter-annual noise
-        annual_mt *= (1.0 + np.random.uniform(-0.08, 0.08))
+        annual_mt *= 1.0 + np.random.uniform(-0.08, 0.08)
 
         for month in range(1, 13):
             month_multiplier = seasonal[month]
             monthly_mt = (annual_mt / 12.0) * month_multiplier
             # Add ±12% intra-month noise
-            monthly_mt *= (1.0 + np.random.uniform(-0.12, 0.12))
+            monthly_mt *= 1.0 + np.random.uniform(-0.12, 0.12)
 
             # Distribute across regions by weight
             for region in regions:
@@ -201,11 +284,12 @@ def generate_crop_dataset(crop: str, start_year: int = 1993, end_year: int = 202
 
                 region_mt = monthly_mt * weight
                 # Add ±15% regional variation
-                region_mt *= (1.0 + np.random.uniform(-0.15, 0.15))
+                region_mt *= 1.0 + np.random.uniform(-0.15, 0.15)
                 region_mt = max(0.01, region_mt)
 
                 # Pick a random day in that month for the transaction date
                 import calendar
+
                 max_day = calendar.monthrange(year, month)[1]
                 day = random.randint(1, max_day)
                 tx_date = datetime(year, month, day)
@@ -226,55 +310,65 @@ def generate_crop_dataset(crop: str, start_year: int = 1993, end_year: int = 202
 
                 farmer_name = f"{region} Regional Cooperative"
                 warehouse_map = {
-                    "Northern":      "Northern Region Agro Store",
-                    "Upper East":    "Upper East Grain Silo",
-                    "Upper West":    "Upper West Storage Centre",
-                    "Brong-Ahafo":   "Brong-Ahafo Grain Depot",
-                    "Ashanti":       "Ashanti Regional Store",
+                    "Northern": "Northern Region Agro Store",
+                    "Upper East": "Upper East Grain Silo",
+                    "Upper West": "Upper West Storage Centre",
+                    "Brong-Ahafo": "Brong-Ahafo Grain Depot",
+                    "Ashanti": "Ashanti Regional Store",
                     "Greater Accra": "Greater Accra Storage Hub",
-                    "Volta":         "Volta Region Produce Store",
-                    "Eastern":       "Eastern Region Farm Hub",
-                    "Western":       "Western Region Cold Store",
-                    "Central":       "Central Region Produce Hub",
+                    "Volta": "Volta Region Produce Store",
+                    "Eastern": "Eastern Region Farm Hub",
+                    "Western": "Western Region Cold Store",
+                    "Central": "Central Region Produce Hub",
                 }
                 warehouse = warehouse_map.get(region, "Greater Accra Storage Hub")
 
                 # STOCK_IN row (harvest/supply)
-                records.append({
-                    "farmer_name":      farmer_name,
-                    "product_name":     crop,
-                    "quantity":         qty,
-                    "unit":             unit,
-                    "transaction_type": "STOCK_IN",
-                    "transaction_date": tx_date.strftime("%Y-%m-%d"),
-                    "warehouse_name":   warehouse,
-                    "region":           region,
-                    "year":             year,
-                    "month":            month,
-                    "season":           "Season1" if month in [3,4,5,6,7,8] else "Season2",
-                    "production_mt":    round(region_mt, 4),
-                    "reference_note":   f"Synthetic harvest {year}-{month:02d} {region}",
-                })
+                records.append(
+                    {
+                        "farmer_name": farmer_name,
+                        "product_name": crop,
+                        "quantity": qty,
+                        "unit": unit,
+                        "transaction_type": "STOCK_IN",
+                        "transaction_date": tx_date.strftime("%Y-%m-%d"),
+                        "warehouse_name": warehouse,
+                        "region": region,
+                        "year": year,
+                        "month": month,
+                        "season": (
+                            "Season1" if month in [3, 4, 5, 6, 7, 8] else "Season2"
+                        ),
+                        "production_mt": round(region_mt, 4),
+                        "reference_note": f"Synthetic harvest {year}-{month:02d} {region}",
+                    }
+                )
 
                 # STOCK_OUT row (sales/distribution)
-                records.append({
-                    "farmer_name":      farmer_name,
-                    "product_name":     crop,
-                    "quantity":         out_qty,
-                    "unit":             unit,
-                    "transaction_type": "STOCK_OUT",
-                    "transaction_date": tx_date.strftime("%Y-%m-%d"),
-                    "warehouse_name":   warehouse,
-                    "region":           region,
-                    "year":             year,
-                    "month":            month,
-                    "season":           "Season1" if month in [3,4,5,6,7,8] else "Season2",
-                    "production_mt":    round(region_mt * outflow_ratio, 4),
-                    "reference_note":   f"Synthetic market sale {year}-{month:02d} {region}",
-                })
+                records.append(
+                    {
+                        "farmer_name": farmer_name,
+                        "product_name": crop,
+                        "quantity": out_qty,
+                        "unit": unit,
+                        "transaction_type": "STOCK_OUT",
+                        "transaction_date": tx_date.strftime("%Y-%m-%d"),
+                        "warehouse_name": warehouse,
+                        "region": region,
+                        "year": year,
+                        "month": month,
+                        "season": (
+                            "Season1" if month in [3, 4, 5, 6, 7, 8] else "Season2"
+                        ),
+                        "production_mt": round(region_mt * outflow_ratio, 4),
+                        "reference_note": f"Synthetic market sale {year}-{month:02d} {region}",
+                    }
+                )
 
     df = pd.DataFrame(records)
-    df = df.sort_values(["year", "month", "region", "transaction_type"]).reset_index(drop=True)
+    df = df.sort_values(["year", "month", "region", "transaction_type"]).reset_index(
+        drop=True
+    )
     return df
 
 
@@ -307,7 +401,9 @@ def consolidate_duplicate_products(db: Session) -> dict:
             canon.category = props["category"]
             canon.description = props["description"]
             db.commit()
-            print(f"  → Confirmed canonical product: {canon_name} (id={canon.product_id})")
+            print(
+                f"  → Confirmed canonical product: {canon_name} (id={canon.product_id})"
+            )
 
         product_map[canon_name] = canon
 
@@ -319,51 +415,75 @@ def consolidate_duplicate_products(db: Session) -> dict:
 
             dup_id = dup.product_id
             canon_id = canon.product_id
-            print(f"    Merging '{dup_name}' (id={dup_id}) → '{canon_name}' (id={canon_id})")
+            print(
+                f"    Merging '{dup_name}' (id={dup_id}) → '{canon_name}' (id={canon_id})"
+            )
 
             # Expire all tracked objects to avoid stale state
             db.expire_all()
 
             # Reassign transactions
-            db.execute(text(
-                "UPDATE stock_transactions SET product_id = :cid WHERE product_id = :did"
-            ), {"cid": canon_id, "did": dup_id})
+            db.execute(
+                text(
+                    "UPDATE stock_transactions SET product_id = :cid WHERE product_id = :did"
+                ),
+                {"cid": canon_id, "did": dup_id},
+            )
 
             # Reassign alerts
-            db.execute(text(
-                "UPDATE stock_alerts SET product_id = :cid WHERE product_id = :did"
-            ), {"cid": canon_id, "did": dup_id})
+            db.execute(
+                text(
+                    "UPDATE stock_alerts SET product_id = :cid WHERE product_id = :did"
+                ),
+                {"cid": canon_id, "did": dup_id},
+            )
 
             # For balances: merge stock into canonical, then delete duplicates
-            dup_balances = db.execute(text(
-                "SELECT balance_id, farmer_id, warehouse_id, current_stock, opening_stock "
-                "FROM stock_balances WHERE product_id = :did"
-            ), {"did": dup_id}).fetchall()
+            dup_balances = db.execute(
+                text(
+                    "SELECT balance_id, farmer_id, warehouse_id, current_stock, opening_stock "
+                    "FROM stock_balances WHERE product_id = :did"
+                ),
+                {"did": dup_id},
+            ).fetchall()
 
             for row in dup_balances:
                 bal_id, farmer_id, wh_id, cur, opn = row
                 # Check if a canonical balance already exists
-                existing = db.execute(text(
-                    "SELECT balance_id FROM stock_balances "
-                    "WHERE farmer_id = :fid AND product_id = :cid AND warehouse_id IS :wid"
-                ), {"fid": farmer_id, "cid": canon_id, "wid": wh_id}).fetchone()
+                existing = db.execute(
+                    text(
+                        "SELECT balance_id FROM stock_balances "
+                        "WHERE farmer_id = :fid AND product_id = :cid AND warehouse_id IS :wid"
+                    ),
+                    {"fid": farmer_id, "cid": canon_id, "wid": wh_id},
+                ).fetchone()
 
                 if existing:
-                    db.execute(text(
-                        "UPDATE stock_balances SET current_stock = current_stock + :cur, "
-                        "opening_stock = opening_stock + :opn "
-                        "WHERE balance_id = :bid"
-                    ), {"cur": cur, "opn": opn, "bid": existing[0]})
-                    db.execute(text(
-                        "DELETE FROM stock_balances WHERE balance_id = :bid"
-                    ), {"bid": bal_id})
+                    db.execute(
+                        text(
+                            "UPDATE stock_balances SET current_stock = current_stock + :cur, "
+                            "opening_stock = opening_stock + :opn "
+                            "WHERE balance_id = :bid"
+                        ),
+                        {"cur": cur, "opn": opn, "bid": existing[0]},
+                    )
+                    db.execute(
+                        text("DELETE FROM stock_balances WHERE balance_id = :bid"),
+                        {"bid": bal_id},
+                    )
                 else:
-                    db.execute(text(
-                        "UPDATE stock_balances SET product_id = :cid WHERE balance_id = :bid"
-                    ), {"cid": canon_id, "bid": bal_id})
+                    db.execute(
+                        text(
+                            "UPDATE stock_balances SET product_id = :cid WHERE balance_id = :bid"
+                        ),
+                        {"cid": canon_id, "bid": bal_id},
+                    )
 
             # Delete the duplicate product
-            db.execute(text("DELETE FROM products WHERE product_id = :did"), {"did": dup_id})
+            db.execute(
+                text("DELETE FROM products WHERE product_id = :did"),
+                {"did": dup_id},
+            )
             db.commit()
             db.expire_all()
             print(f"    ✓ Merged and removed '{dup_name}'")
@@ -371,7 +491,9 @@ def consolidate_duplicate_products(db: Session) -> dict:
     return product_map
 
 
-def seed_synthetic_transactions(db: Session, crop: str, df: pd.DataFrame, product_map: dict):
+def seed_synthetic_transactions(
+    db: Session, crop: str, df: pd.DataFrame, product_map: dict
+):
     """
     Seeds the synthetic dataframe into the stock database.
     Skips rows that already exist (idempotent).
@@ -389,13 +511,22 @@ def seed_synthetic_transactions(db: Session, crop: str, df: pd.DataFrame, produc
     wh_cache = {w.warehouse_name: w for w in all_wh}
 
     # Build balance cache: (farmer_id, product_id, wh_id) → StockBalance
-    existing_balances = db.query(StockBalance).filter(
-        StockBalance.product_id == product.product_id
-    ).all()
-    balance_cache = {(b.farmer_id, b.product_id, b.warehouse_id): b for b in existing_balances}
+    existing_balances = (
+        db.query(StockBalance)
+        .filter(StockBalance.product_id == product.product_id)
+        .all()
+    )
+    balance_cache = {
+        (b.farmer_id, b.product_id, b.warehouse_id): b for b in existing_balances
+    }
 
     # Reorder levels per crop
-    reorder_levels = {"Tomato": 50.0, "Yam": 500.0, "Maize": 1000.0, "Rice": 800.0}
+    reorder_levels = {
+        "Tomato": 50.0,
+        "Yam": 500.0,
+        "Maize": 1000.0,
+        "Rice": 800.0,
+    }
     reorder = reorder_levels[crop]
 
     imported = 0
@@ -421,12 +552,16 @@ def seed_synthetic_transactions(db: Session, crop: str, df: pd.DataFrame, produc
         note = str(row["reference_note"])
 
         # Idempotency: skip if reference note already exists for same farmer+product+date
-        existing = db.query(StockTransaction).filter(
-            StockTransaction.farmer_id == farmer.farmer_id,
-            StockTransaction.product_id == product.product_id,
-            StockTransaction.transaction_date == tx_date,
-            StockTransaction.reference_note == note,
-        ).first()
+        existing = (
+            db.query(StockTransaction)
+            .filter(
+                StockTransaction.farmer_id == farmer.farmer_id,
+                StockTransaction.product_id == product.product_id,
+                StockTransaction.transaction_date == tx_date,
+                StockTransaction.reference_note == note,
+            )
+            .first()
+        )
         if existing:
             skipped += 1
             continue
@@ -455,7 +590,7 @@ def seed_synthetic_transactions(db: Session, crop: str, df: pd.DataFrame, produc
                 opening_stock=0.0,
                 current_stock=0.0,
                 reorder_level=reorder,
-                last_updated=datetime.utcnow(),
+                last_updated=datetime.now(timezone.utc),
             )
             db.add(balance)
             db.flush()
@@ -466,7 +601,7 @@ def seed_synthetic_transactions(db: Session, crop: str, df: pd.DataFrame, produc
         elif tx_type == "STOCK_OUT":
             balance.current_stock = max(0.0, balance.current_stock - qty)
 
-        balance.last_updated = datetime.utcnow()
+        balance.last_updated = datetime.now(timezone.utc)
         imported += 1
 
         if imported % 1000 == 0:
@@ -487,16 +622,28 @@ def print_final_summary(db: Session):
         if not product:
             print(f"\n  {crop}: NOT FOUND")
             continue
-        balances = db.query(StockBalance).filter(StockBalance.product_id == product.product_id).all()
+        balances = (
+            db.query(StockBalance)
+            .filter(StockBalance.product_id == product.product_id)
+            .all()
+        )
         total_stock = sum(b.current_stock for b in balances)
-        tx_in = db.query(StockTransaction).filter(
-            StockTransaction.product_id == product.product_id,
-            StockTransaction.transaction_type == "STOCK_IN"
-        ).count()
-        tx_out = db.query(StockTransaction).filter(
-            StockTransaction.product_id == product.product_id,
-            StockTransaction.transaction_type == "STOCK_OUT"
-        ).count()
+        tx_in = (
+            db.query(StockTransaction)
+            .filter(
+                StockTransaction.product_id == product.product_id,
+                StockTransaction.transaction_type == "STOCK_IN",
+            )
+            .count()
+        )
+        tx_out = (
+            db.query(StockTransaction)
+            .filter(
+                StockTransaction.product_id == product.product_id,
+                StockTransaction.transaction_type == "STOCK_OUT",
+            )
+            .count()
+        )
         print(f"\n  {'─'*45}")
         print(f"  Crop         : {product.product_name}")
         print(f"  Unit         : {product.unit}")

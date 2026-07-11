@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import httpx
-from fastapi import BackgroundTasks, HTTPException, UploadFile, status
+from fastapi import UploadFile, status
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -27,7 +27,9 @@ from app.models.gateway_models import (
     GatewayDeadLetter,
     GatewayEvent,
     GatewayFileAsset,
-    GatewayPlugin as GatewayPluginModel,
+)
+from app.models.gateway_models import GatewayPlugin as GatewayPluginModel
+from app.models.gateway_models import (
     GatewayRequestLog,
     GatewaySession,
     GatewayTask,
@@ -42,13 +44,14 @@ from app.models.quality_models import (
     ProductCategory,
     PurchaseRecommendation,
     QualityAssessment,
-    RiskLevel,
     RipenessLevel,
+    RiskLevel,
 )
 from app.repositories.stock_repo import StockRepository
 from app.schemas.gateway_schemas import GatewayRequestEnvelope
 from app.services.ai_provider_service import provider_service
 from app.services.gateway_security import GatewayAPIError, utcnow
+from app.exceptions import ExternalDependencyError
 from app.services.integration_service import DataIntegrationService
 from app.services.quality_service import QualityAssessmentService
 from app.services.stock_service import StockService
@@ -86,9 +89,16 @@ class CacheService:
             if redis_url:
                 import redis
 
-                self._redis_client = redis.Redis.from_url(redis_url, decode_responses=True)
-        except Exception:
+                self._redis_client = redis.Redis.from_url(
+                    redis_url, decode_responses=True
+                )
+        except ImportError:
+            # Redis library not installed — fall back to in-memory cache
             self._redis_client = None
+        except Exception as exc:  # pragma: no cover - unexpected runtime failures
+            # Wrap unexpected external dependency errors to make handling explicit
+            self._redis_client = None
+            raise ExternalDependencyError("Failed to initialize redis client", details=str(exc)) from exc
 
     def get(self, key: str) -> Any:
         if self._redis_client:
@@ -103,12 +113,20 @@ class CacheService:
             return None
         return value
 
-    def set(self, key: str, value: Any, ttl_seconds: int = GATEWAY_CACHE_TTL_SECONDS) -> None:
+    def set(
+        self,
+        key: str,
+        value: Any,
+        ttl_seconds: int = GATEWAY_CACHE_TTL_SECONDS,
+    ) -> None:
         encoded = json_dumps(serialize_datetime(value))
         if self._redis_client:
             self._redis_client.setex(key, ttl_seconds, encoded)
             return
-        self._memory_store[key] = (time.time() + ttl_seconds, json.loads(encoded))
+        self._memory_store[key] = (
+            time.time() + ttl_seconds,
+            json.loads(encoded),
+        )
 
     def delete(self, key: str) -> None:
         if self._redis_client:
@@ -118,10 +136,22 @@ class CacheService:
     def health(self) -> Dict[str, Any]:
         if self._redis_client:
             try:
-                return {"backend": "redis", "status": "healthy", "ping": bool(self._redis_client.ping())}
+                return {
+                    "backend": "redis",
+                    "status": "healthy",
+                    "ping": bool(self._redis_client.ping()),
+                }
             except Exception as exc:
-                return {"backend": "redis", "status": "degraded", "detail": str(exc)}
-        return {"backend": "memory", "status": "healthy", "entries": len(self._memory_store)}
+                return {
+                    "backend": "redis",
+                    "status": "degraded",
+                    "detail": str(exc),
+                }
+        return {
+            "backend": "memory",
+            "status": "healthy",
+            "entries": len(self._memory_store),
+        }
 
 
 cache_service = CacheService()
@@ -136,7 +166,12 @@ class GatewayPlugin:
     def supports(self, module: str) -> bool:
         return False
 
-    def execute(self, db: Session, request: GatewayRequestEnvelope, identity: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    def execute(
+        self,
+        db: Session,
+        request: GatewayRequestEnvelope,
+        identity: Optional[Dict[str, Any]],
+    ) -> Dict[str, Any]:
         raise NotImplementedError
 
 
@@ -157,7 +192,12 @@ class StockGatewayPlugin(GatewayPlugin):
     def supports(self, module: str) -> bool:
         return module == "stock"
 
-    def execute(self, db: Session, request: GatewayRequestEnvelope, identity: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    def execute(
+        self,
+        db: Session,
+        request: GatewayRequestEnvelope,
+        identity: Optional[Dict[str, Any]],
+    ) -> Dict[str, Any]:
         repo = StockRepository(db)
         service = StockService(db)
         resource = request.action.resource
@@ -170,11 +210,19 @@ class StockGatewayPlugin(GatewayPlugin):
                     {
                         "balanceId": balance.balance_id,
                         "farmerId": balance.farmer_id,
-                        "farmerName": balance.farmer.full_name if balance.farmer else None,
+                        "farmerName": (
+                            balance.farmer.full_name if balance.farmer else None
+                        ),
                         "productId": balance.product_id,
-                        "productName": balance.product.product_name if balance.product else None,
+                        "productName": (
+                            balance.product.product_name if balance.product else None
+                        ),
                         "warehouseId": balance.warehouse_id,
-                        "warehouseName": balance.warehouse.warehouse_name if balance.warehouse else None,
+                        "warehouseName": (
+                            balance.warehouse.warehouse_name
+                            if balance.warehouse
+                            else None
+                        ),
                         "currentStock": balance.current_stock,
                         "reorderLevel": balance.reorder_level,
                         "lastUpdated": balance.last_updated.isoformat(),
@@ -187,9 +235,17 @@ class StockGatewayPlugin(GatewayPlugin):
             return {
                 "items": [
                     {
-                        "farmerName": balance.farmer.full_name if balance.farmer else None,
-                        "productName": balance.product.product_name if balance.product else None,
-                        "warehouseName": balance.warehouse.warehouse_name if balance.warehouse else None,
+                        "farmerName": (
+                            balance.farmer.full_name if balance.farmer else None
+                        ),
+                        "productName": (
+                            balance.product.product_name if balance.product else None
+                        ),
+                        "warehouseName": (
+                            balance.warehouse.warehouse_name
+                            if balance.warehouse
+                            else None
+                        ),
                         "currentStock": balance.current_stock,
                         "reorderLevel": balance.reorder_level,
                     }
@@ -242,27 +298,73 @@ class StockGatewayPlugin(GatewayPlugin):
                 }
             }
         if resource == "farmers" and operation == "list":
-            records = repo.get_all_farmers(skip=int(payload.get("skip", 0)), limit=int(payload.get("limit", 100)))
-            return {"farmers": [{"farmerId": item.farmer_id, "fullName": item.full_name, "region": item.region} for item in records]}
+            records = repo.get_all_farmers(
+                skip=int(payload.get("skip", 0)),
+                limit=int(payload.get("limit", 100)),
+            )
+            return {
+                "farmers": [
+                    {
+                        "farmerId": item.farmer_id,
+                        "fullName": item.full_name,
+                        "region": item.region,
+                    }
+                    for item in records
+                ]
+            }
         if resource == "products" and operation == "list":
-            records = repo.get_all_products(skip=int(payload.get("skip", 0)), limit=int(payload.get("limit", 100)))
-            return {"products": [{"productId": item.product_id, "productName": item.product_name, "unit": item.unit} for item in records]}
+            records = repo.get_all_products(
+                skip=int(payload.get("skip", 0)),
+                limit=int(payload.get("limit", 100)),
+            )
+            return {
+                "products": [
+                    {
+                        "productId": item.product_id,
+                        "productName": item.product_name,
+                        "unit": item.unit,
+                    }
+                    for item in records
+                ]
+            }
         if resource == "warehouses" and operation == "list":
             records = repo.get_all_warehouses()
-            return {"warehouses": [{"warehouseId": item.warehouse_id, "warehouseName": item.warehouse_name, "region": item.region} for item in records]}
-        raise GatewayAPIError(status.HTTP_404_NOT_FOUND, "ROUTE_NOT_FOUND", "Unsupported stock action.")
+            return {
+                "warehouses": [
+                    {
+                        "warehouseId": item.warehouse_id,
+                        "warehouseName": item.warehouse_name,
+                        "region": item.region,
+                    }
+                    for item in records
+                ]
+            }
+        raise GatewayAPIError(
+            status.HTTP_404_NOT_FOUND,
+            "ROUTE_NOT_FOUND",
+            "Unsupported stock action.",
+        )
 
 
 class QualityGatewayPlugin(GatewayPlugin):
     plugin_key = "quality"
     name = "Quality Gateway Plugin"
     version = "1.0.0"
-    capabilities = ["assessments.list", "assessments.summary", "reference.categories"]
+    capabilities = [
+        "assessments.list",
+        "assessments.summary",
+        "reference.categories",
+    ]
 
     def supports(self, module: str) -> bool:
         return module == "quality"
 
-    def execute(self, db: Session, request: GatewayRequestEnvelope, identity: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    def execute(
+        self,
+        db: Session,
+        request: GatewayRequestEnvelope,
+        identity: Optional[Dict[str, Any]],
+    ) -> Dict[str, Any]:
         resource = request.action.resource
         operation = request.action.operation
         payload = request.payload
@@ -298,12 +400,16 @@ class QualityGatewayPlugin(GatewayPlugin):
                 QualityAssessment.category,
                 func.count(QualityAssessment.assessment_id).label("total"),
                 func.avg(QualityAssessment.quality_score).label("avg_quality"),
-                func.avg(QualityAssessment.market_readiness_score).label("avg_readiness"),
+                func.avg(QualityAssessment.market_readiness_score).label(
+                    "avg_readiness"
+                ),
                 func.avg(QualityAssessment.estimated_market_value).label("avg_value"),
             )
             if category:
                 query = query.filter(QualityAssessment.category == category)
-            rows = query.group_by(QualityAssessment.product_name, QualityAssessment.category).all()
+            rows = query.group_by(
+                QualityAssessment.product_name, QualityAssessment.category
+            ).all()
             return {
                 "summary": [
                     {
@@ -327,7 +433,11 @@ class QualityGatewayPlugin(GatewayPlugin):
                 "healthStatuses": [item.value for item in HealthStatus],
                 "freshnessLevels": [item.value for item in FreshnessLevel],
             }
-        raise GatewayAPIError(status.HTTP_404_NOT_FOUND, "ROUTE_NOT_FOUND", "Unsupported quality action.")
+        raise GatewayAPIError(
+            status.HTTP_404_NOT_FOUND,
+            "ROUTE_NOT_FOUND",
+            "Unsupported quality action.",
+        )
 
 
 class IntegrationGatewayPlugin(GatewayPlugin):
@@ -339,13 +449,21 @@ class IntegrationGatewayPlugin(GatewayPlugin):
     def supports(self, module: str) -> bool:
         return module == "integration"
 
-    def execute(self, db: Session, request: GatewayRequestEnvelope, identity: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    def execute(
+        self,
+        db: Session,
+        request: GatewayRequestEnvelope,
+        identity: Optional[Dict[str, Any]],
+    ) -> Dict[str, Any]:
         resource = request.action.resource
         operation = request.action.operation
         payload = request.payload
         service = DataIntegrationService(db)
         if resource == "sessions" and operation == "list":
-            records = service.list_sessions(skip=int(payload.get("skip", 0)), limit=int(payload.get("limit", 50)))
+            records = service.list_sessions(
+                skip=int(payload.get("skip", 0)),
+                limit=int(payload.get("limit", 50)),
+            )
             return {
                 "sessions": [
                     {
@@ -354,8 +472,12 @@ class IntegrationGatewayPlugin(GatewayPlugin):
                         "status": item.status,
                         "totalRows": item.total_rows,
                         "transactionsInserted": item.transactions_inserted,
-                        "startedAt": item.started_at.isoformat() if item.started_at else None,
-                        "completedAt": item.completed_at.isoformat() if item.completed_at else None,
+                        "startedAt": (
+                            item.started_at.isoformat() if item.started_at else None
+                        ),
+                        "completedAt": (
+                            item.completed_at.isoformat() if item.completed_at else None
+                        ),
                     }
                     for item in records
                 ]
@@ -363,8 +485,12 @@ class IntegrationGatewayPlugin(GatewayPlugin):
         if resource == "reports" and operation == "standalone":
             return service.get_standalone_reports()
         if resource == "health" and operation == "overview":
-            session_count = db.query(func.count(DataIntegrationSession.session_id)).scalar() or 0
-            report_count = db.query(func.count(IntegrationReport.report_id)).scalar() or 0
+            session_count = (
+                db.query(func.count(DataIntegrationSession.session_id)).scalar() or 0
+            )
+            report_count = (
+                db.query(func.count(IntegrationReport.report_id)).scalar() or 0
+            )
             return {
                 "sessions": session_count,
                 "reports": report_count,
@@ -376,19 +502,33 @@ class IntegrationGatewayPlugin(GatewayPlugin):
                 )
                 or "UNKNOWN",
             }
-        raise GatewayAPIError(status.HTTP_404_NOT_FOUND, "ROUTE_NOT_FOUND", "Unsupported integration action.")
+        raise GatewayAPIError(
+            status.HTTP_404_NOT_FOUND,
+            "ROUTE_NOT_FOUND",
+            "Unsupported integration action.",
+        )
 
 
 class SystemGatewayPlugin(GatewayPlugin):
     plugin_key = "system"
     name = "System Gateway Plugin"
     version = "1.0.0"
-    capabilities = ["context.echo", "providers.catalog", "models.list", "plugins.list"]
+    capabilities = [
+        "context.echo",
+        "providers.catalog",
+        "models.list",
+        "plugins.list",
+    ]
 
     def supports(self, module: str) -> bool:
         return module in {"system", "gateway"}
 
-    def execute(self, db: Session, request: GatewayRequestEnvelope, identity: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    def execute(
+        self,
+        db: Session,
+        request: GatewayRequestEnvelope,
+        identity: Optional[Dict[str, Any]],
+    ) -> Dict[str, Any]:
         resource = request.action.resource
         operation = request.action.operation
         if resource == "context" and operation == "echo":
@@ -399,7 +539,11 @@ class SystemGatewayPlugin(GatewayPlugin):
             return {"providers": provider_service.model_catalog()}
         if resource == "plugins" and operation == "list":
             return {"plugins": plugin_registry.describe()}
-        raise GatewayAPIError(status.HTTP_404_NOT_FOUND, "ROUTE_NOT_FOUND", "Unsupported system action.")
+        raise GatewayAPIError(
+            status.HTTP_404_NOT_FOUND,
+            "ROUTE_NOT_FOUND",
+            "Unsupported system action.",
+        )
 
 
 class PluginRegistry:
@@ -424,7 +568,9 @@ class PluginRegistry:
         ]
 
     def sync_models(self, db: Session) -> None:
-        existing = {item.plugin_key: item for item in db.query(GatewayPluginModel).all()}
+        existing = {
+            item.plugin_key: item for item in db.query(GatewayPluginModel).all()
+        }
         for plugin in self._plugins:
             record = existing.get(plugin.plugin_key)
             if not record:
@@ -444,11 +590,20 @@ class PluginRegistry:
                 record.config_json = json_dumps({"capabilities": plugin.capabilities})
         db.commit()
 
-    def dispatch(self, db: Session, request: GatewayRequestEnvelope, identity: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    def dispatch(
+        self,
+        db: Session,
+        request: GatewayRequestEnvelope,
+        identity: Optional[Dict[str, Any]],
+    ) -> Dict[str, Any]:
         for plugin in self._plugins:
             if plugin.supports(request.action.module):
                 return plugin.execute(db, request, identity)
-        raise GatewayAPIError(status.HTTP_404_NOT_FOUND, "MODULE_NOT_FOUND", "No plugin could handle the requested module.")
+        raise GatewayAPIError(
+            status.HTTP_404_NOT_FOUND,
+            "MODULE_NOT_FOUND",
+            "No plugin could handle the requested module.",
+        )
 
 
 plugin_registry = PluginRegistry()
@@ -484,7 +639,12 @@ class GatewayEventService:
         return event
 
     def list_events(self, db: Session, limit: int = 100) -> List[GatewayEvent]:
-        return db.query(GatewayEvent).order_by(GatewayEvent.created_at.desc()).limit(limit).all()
+        return (
+            db.query(GatewayEvent)
+            .order_by(GatewayEvent.created_at.desc())
+            .limit(limit)
+            .all()
+        )
 
 
 class GatewayWebhookService:
@@ -505,21 +665,35 @@ class GatewayWebhookService:
         return endpoint
 
     def list_endpoints(self, db: Session) -> List[GatewayWebhookEndpoint]:
-        return db.query(GatewayWebhookEndpoint).order_by(GatewayWebhookEndpoint.created_at.desc()).all()
+        return (
+            db.query(GatewayWebhookEndpoint)
+            .order_by(GatewayWebhookEndpoint.created_at.desc())
+            .all()
+        )
 
     async def dispatch_event(self, event_id: str) -> None:
         db = SessionLocal()
         try:
-            event = db.query(GatewayEvent).filter(GatewayEvent.event_id == event_id).first()
+            event = (
+                db.query(GatewayEvent).filter(GatewayEvent.event_id == event_id).first()
+            )
             if not event:
                 return
-            endpoints = db.query(GatewayWebhookEndpoint).filter(GatewayWebhookEndpoint.is_active.is_(True)).all()
+            endpoints = (
+                db.query(GatewayWebhookEndpoint)
+                .filter(GatewayWebhookEndpoint.is_active.is_(True))
+                .all()
+            )
             event_types = {event.event_type, event.topic}
             for endpoint in endpoints:
                 subscribed = set(json_loads(endpoint.event_types_json, []))
                 if not (event_types & subscribed):
                     continue
-                delivery = GatewayWebhookDelivery(endpoint_id=endpoint.id, event_id=event.id, status="PENDING")
+                delivery = GatewayWebhookDelivery(
+                    endpoint_id=endpoint.id,
+                    event_id=event.id,
+                    status="PENDING",
+                )
                 db.add(delivery)
                 db.commit()
                 db.refresh(delivery)
@@ -548,12 +722,19 @@ class GatewayWebhookService:
             "metadata": json_loads(event.metadata_json, {}),
         }
         encoded = json_dumps(payload)
-        signature = hashlib.sha256(f"{endpoint.secret_key}.{encoded}".encode("utf-8")).hexdigest()
-        headers = {"Content-Type": "application/json", "X-Gateway-Signature": signature}
+        signature = hashlib.sha256(
+            f"{endpoint.secret_key}.{encoded}".encode("utf-8")
+        ).hexdigest()
+        headers = {
+            "Content-Type": "application/json",
+            "X-Gateway-Signature": signature,
+        }
         headers.update(json_loads(endpoint.headers_json, {}))
         try:
             async with httpx.AsyncClient(timeout=endpoint.timeout_seconds) as client:
-                response = await client.post(endpoint.target_url, content=encoded, headers=headers)
+                response = await client.post(
+                    endpoint.target_url, content=encoded, headers=headers
+                )
             delivery.attempt_count += 1
             delivery.response_status = response.status_code
             delivery.response_body = response.text[:2000]
@@ -621,7 +802,11 @@ class GatewayTaskService:
     def get_task(self, db: Session, task_id: str) -> GatewayTask:
         task = db.query(GatewayTask).filter(GatewayTask.task_id == task_id).first()
         if not task:
-            raise GatewayAPIError(status.HTTP_404_NOT_FOUND, "TASK_NOT_FOUND", "Task was not found.")
+            raise GatewayAPIError(
+                status.HTTP_404_NOT_FOUND,
+                "TASK_NOT_FOUND",
+                "Task was not found.",
+            )
         return task
 
     def cancel_task(self, db: Session, task_id: str) -> GatewayTask:
@@ -655,7 +840,7 @@ class GatewayTaskService:
                 request=request,
                 http_method="BACKGROUND",
                 path="/v1/tasks",
-                identity={"principal": task.principal} if task.principal else None,
+                identity=({"principal": task.principal} if task.principal else None),
                 request_id=task.request_id or str(uuid.uuid4()),
                 trace_id=task.trace_id or str(uuid.uuid4()),
                 caller_ip="background",
@@ -682,7 +867,9 @@ class GatewayFileService:
         Path(GATEWAY_UPLOAD_DIR).mkdir(parents=True, exist_ok=True)
         Path(DATA_PROCESSED_DIR).mkdir(parents=True, exist_ok=True)
 
-    async def store_file(self, db: Session, upload: UploadFile, principal_id: Optional[int]) -> GatewayFileAsset:
+    async def store_file(
+        self, db: Session, upload: UploadFile, principal_id: Optional[int]
+    ) -> GatewayFileAsset:
         content = await upload.read()
         if len(content) > GATEWAY_FILE_SIZE_LIMIT_BYTES:
             raise GatewayAPIError(
@@ -693,7 +880,11 @@ class GatewayFileService:
             )
         extension = Path(upload.filename or "").suffix.lower()
         if extension and extension not in GATEWAY_SUPPORTED_FILE_TYPES:
-            raise GatewayAPIError(status.HTTP_400_BAD_REQUEST, "UNSUPPORTED_FILE", "File type is not supported by the gateway.")
+            raise GatewayAPIError(
+                status.HTTP_400_BAD_REQUEST,
+                "UNSUPPORTED_FILE",
+                "File type is not supported by the gateway.",
+            )
         file_id = str(uuid.uuid4())
         checksum = hashlib.sha256(content).hexdigest()
         storage_path = Path(GATEWAY_UPLOAD_DIR) / f"{file_id}{extension or '.bin'}"
@@ -715,35 +906,80 @@ class GatewayFileService:
         return asset
 
     def get_asset(self, db: Session, file_id: str) -> GatewayFileAsset:
-        asset = db.query(GatewayFileAsset).filter(GatewayFileAsset.file_id == file_id).first()
+        asset = (
+            db.query(GatewayFileAsset)
+            .filter(GatewayFileAsset.file_id == file_id)
+            .first()
+        )
         if not asset:
-            raise GatewayAPIError(status.HTTP_404_NOT_FOUND, "FILE_NOT_FOUND", "File was not found.")
+            raise GatewayAPIError(
+                status.HTTP_404_NOT_FOUND,
+                "FILE_NOT_FOUND",
+                "File was not found.",
+            )
         return asset
 
 
 class GatewayMetricsService:
     def health(self, db: Session) -> Dict[str, Any]:
+        # Probe DB availability; if tables are missing (e.g., during tests using alternate engines),
+        # return degraded status with zeroed counters instead of raising.
         database_ok = True
         try:
             db.query(func.count(GatewayRequestLog.id)).scalar()
         except Exception:
             database_ok = False
+
+        def safe_count(query_callable, default=0):
+            if not database_ok:
+                return default
+            try:
+                return query_callable() or default
+            except Exception:
+                return default
+
+        requests_count = safe_count(
+            lambda: db.query(func.count(GatewayRequestLog.id)).scalar()
+        )
+        events_count = safe_count(
+            lambda: db.query(func.count(GatewayEvent.id)).scalar()
+        )
+        tasks_count = safe_count(lambda: db.query(func.count(GatewayTask.id)).scalar())
+        queued_tasks = safe_count(
+            lambda: db.query(func.count(GatewayTask.id))
+            .filter(GatewayTask.status == "QUEUED")
+            .scalar()
+        )
+        running_tasks = safe_count(
+            lambda: db.query(func.count(GatewayTask.id))
+            .filter(GatewayTask.status == "RUNNING")
+            .scalar()
+        )
+        pending_webhook_retries = safe_count(
+            lambda: db.query(func.count(GatewayWebhookDelivery.id))
+            .filter(GatewayWebhookDelivery.status == "FAILED")
+            .scalar()
+        )
+        dead_letters = safe_count(
+            lambda: db.query(func.count(GatewayDeadLetter.id)).scalar()
+        )
+
         return {
             "service": "agriculture-ai-gateway",
             "status": "healthy" if database_ok else "degraded",
             "version": APP_VERSION,
             "database": {
                 "status": "healthy" if database_ok else "degraded",
-                "requests": db.query(func.count(GatewayRequestLog.id)).scalar() or 0,
-                "events": db.query(func.count(GatewayEvent.id)).scalar() or 0,
-                "tasks": db.query(func.count(GatewayTask.id)).scalar() or 0,
+                "requests": requests_count,
+                "events": events_count,
+                "tasks": tasks_count,
             },
             "cache": cache_service.health(),
             "queue": {
-                "queuedTasks": db.query(func.count(GatewayTask.id)).filter(GatewayTask.status == "QUEUED").scalar() or 0,
-                "runningTasks": db.query(func.count(GatewayTask.id)).filter(GatewayTask.status == "RUNNING").scalar() or 0,
-                "pendingWebhookRetries": db.query(func.count(GatewayWebhookDelivery.id)).filter(GatewayWebhookDelivery.status == "FAILED").scalar() or 0,
-                "deadLetters": db.query(func.count(GatewayDeadLetter.id)).scalar() or 0,
+                "queuedTasks": queued_tasks,
+                "runningTasks": running_tasks,
+                "pendingWebhookRetries": pending_webhook_retries,
+                "deadLetters": dead_letters,
             },
             "metrics": self.status(db),
         }
@@ -759,11 +995,20 @@ class GatewayMetricsService:
             cpu = 0.0
             memory = 0
         total_requests = db.query(func.count(GatewayRequestLog.id)).scalar() or 0
-        error_requests = db.query(func.count(GatewayRequestLog.id)).filter(GatewayRequestLog.success.is_(False)).scalar() or 0
-        avg_latency = db.query(func.avg(GatewayRequestLog.processing_time_ms)).scalar() or 0.0
+        error_requests = (
+            db.query(func.count(GatewayRequestLog.id))
+            .filter(GatewayRequestLog.success.is_(False))
+            .scalar()
+            or 0
+        )
+        avg_latency = (
+            db.query(func.avg(GatewayRequestLog.processing_time_ms)).scalar() or 0.0
+        )
         return {
             "requestCount": total_requests,
-            "errorRate": round((error_requests / total_requests), 4) if total_requests else 0.0,
+            "errorRate": (
+                round((error_requests / total_requests), 4) if total_requests else 0.0
+            ),
             "averageLatencyMs": round(avg_latency, 2),
             "auditLogCount": db.query(func.count(GatewayAuditLog.id)).scalar() or 0,
             "cpuPercent": cpu,
@@ -785,7 +1030,17 @@ class GatewayOrchestrator:
     def required_permissions(self, request: GatewayRequestEnvelope) -> List[str]:
         module = request.action.module
         operation = request.action.operation.lower()
-        if operation in {"snapshot", "list", "get", "summary", "catalog", "status", "echo", "overview", "categories"}:
+        if operation in {
+            "snapshot",
+            "list",
+            "get",
+            "summary",
+            "catalog",
+            "status",
+            "echo",
+            "overview",
+            "categories",
+        }:
             return [f"{module}:read", "gateway:read"]
         return [f"{module}:write", "gateway:write"]
 
@@ -797,18 +1052,28 @@ class GatewayOrchestrator:
         trace_id: str,
     ) -> GatewaySession:
         session_id = request.context.session_id or str(uuid.uuid4())
-        record = db.query(GatewaySession).filter(GatewaySession.session_id == session_id).first()
+        record = (
+            db.query(GatewaySession)
+            .filter(GatewaySession.session_id == session_id)
+            .first()
+        )
         if not record:
             record = GatewaySession(session_id=session_id)
             db.add(record)
         record.principal_id = identity["principal"].id if identity else None
         record.conversation_id = request.context.conversation_id
         record.memory_id = request.context.memory_id
-        record.workspace_id = request.context.workspace_id or (request.workspace.id if request.workspace else None)
+        record.workspace_id = request.context.workspace_id or (
+            request.workspace.id if request.workspace else None
+        )
         record.project_id = request.context.project_id
         record.organization_id = request.context.organization_id
-        record.user_id = request.context.user_id or (request.user.id if request.user else None)
-        record.agent_id = request.context.agent_id or (request.agent.id if request.agent else None)
+        record.user_id = request.context.user_id or (
+            request.user.id if request.user else None
+        )
+        record.agent_id = request.context.agent_id or (
+            request.agent.id if request.agent else None
+        )
         record.tool_id = request.context.tool_id
         record.correlation_id = request.context.correlation_id
         record.trace_id = request.context.trace_id or trace_id
@@ -831,15 +1096,32 @@ class GatewayOrchestrator:
         allow_duplicate: bool = False,
     ) -> Dict[str, Any]:
         started = time.perf_counter()
-        duplicate = db.query(GatewayRequestLog).filter(GatewayRequestLog.request_id == request_id).first()
+        duplicate = (
+            db.query(GatewayRequestLog)
+            .filter(GatewayRequestLog.request_id == request_id)
+            .first()
+        )
         if duplicate and not allow_duplicate:
             duplicate_body = json_loads(duplicate.response_body, {})
             if duplicate.success and duplicate_body:
                 return {"duplicate": True, "response": duplicate_body}
-            raise GatewayAPIError(status.HTTP_409_CONFLICT, "DUPLICATE_REQUEST", "Request has already been processed.", {"requestId": request_id})
+            raise GatewayAPIError(
+                status.HTTP_409_CONFLICT,
+                "DUPLICATE_REQUEST",
+                "Request has already been processed.",
+                {"requestId": request_id},
+            )
 
         cache_key = None
-        if request.action.mode == "sync" and request.action.operation.lower() in {"snapshot", "list", "get", "summary", "catalog", "categories", "overview"}:
+        if request.action.mode == "sync" and request.action.operation.lower() in {
+            "snapshot",
+            "list",
+            "get",
+            "summary",
+            "catalog",
+            "categories",
+            "overview",
+        }:
             cache_key = hashlib.sha256(
                 json_dumps(
                     {
@@ -877,7 +1159,9 @@ class GatewayOrchestrator:
             action_name=f"{request.action.resource}.{request.action.operation}",
             request_body=request.model_dump_json(by_alias=True),
             response_body=json_dumps(response_payload),
-            request_size_bytes=len(request.model_dump_json(by_alias=True).encode("utf-8")),
+            request_size_bytes=len(
+                request.model_dump_json(by_alias=True).encode("utf-8")
+            ),
             response_size_bytes=len(json_dumps(response_payload).encode("utf-8")),
             status_code=200,
             success=True,
@@ -907,7 +1191,11 @@ class GatewayOrchestrator:
             event_type="gateway.request.completed",
             topic=f"{request.action.module}.{request.action.resource}",
             source="gateway",
-            payload={"requestId": request_id, "traceId": trace_id, "module": request.action.module},
+            payload={
+                "requestId": request_id,
+                "traceId": trace_id,
+                "module": request.action.module,
+            },
             metadata={"status": "SUCCESS"},
             trace_id=trace_id,
             request_id=request_id,
@@ -941,7 +1229,9 @@ class GatewayOrchestrator:
                 action_name=None,
                 request_body=request_body,
                 response_body=json_dumps({"error": message}),
-                request_size_bytes=len(request_body.encode("utf-8")) if request_body else 0,
+                request_size_bytes=(
+                    len(request_body.encode("utf-8")) if request_body else 0
+                ),
                 response_size_bytes=len(message.encode("utf-8")),
                 status_code=status_code_value,
                 success=False,
@@ -959,4 +1249,7 @@ gateway_orchestrator = GatewayOrchestrator()
 def render_stream_chunks(content: Dict[str, Any]) -> List[str]:
     encoded = json_dumps(serialize_datetime(content))
     chunk_size = max(32, len(encoded) // 4)
-    return [encoded[index : index + chunk_size] for index in range(0, len(encoded), chunk_size)]
+    return [
+        encoded[index : index + chunk_size]
+        for index in range(0, len(encoded), chunk_size)
+    ]

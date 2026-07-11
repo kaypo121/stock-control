@@ -3,7 +3,16 @@ import json
 import time
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, Request, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    File,
+    Request,
+    UploadFile,
+    WebSocket,
+    WebSocketDisconnect,
+)
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from sqlalchemy.orm import Session
 
@@ -40,14 +49,13 @@ from app.services.gateway_service import (
     event_service,
     file_service,
     gateway_orchestrator,
+    json_loads,
     metrics_service,
     plugin_registry,
     render_stream_chunks,
     task_service,
     webhook_service,
-    json_loads,
 )
-
 
 router = APIRouter(prefix="/v1", tags=["AI Gateway"])
 security_service = GatewaySecurityService()
@@ -77,18 +85,31 @@ def _response(
         warnings=warnings or [],
         metadata=metadata or {},
         processingTime=processing_ms,
-        traceId=getattr(request.state, "trace_id", request.headers.get("X-Trace-Id", "")),
-        requestId=getattr(request.state, "request_id", request.headers.get("X-Request-Id", "")),
+        traceId=getattr(
+            request.state, "trace_id", request.headers.get("X-Trace-Id", "")
+        ),
+        requestId=getattr(
+            request.state,
+            "request_id",
+            request.headers.get("X-Request-Id", ""),
+        ),
         version="v1",
     )
-    return JSONResponse(status_code=status_code, content=body.model_dump(by_alias=True, mode="json"))
+    return JSONResponse(
+        status_code=status_code,
+        content=body.model_dump(by_alias=True, mode="json"),
+    )
 
 
 def _caller_ip(request: Request) -> str:
     return request.client.host if request.client else "unknown"
 
 
-def _authenticate(db: Session, request: Request, required_permissions: Optional[List[str]] = None) -> Optional[Dict[str, Any]]:
+def _authenticate(
+    db: Session,
+    request: Request,
+    required_permissions: Optional[List[str]] = None,
+) -> Optional[Dict[str, Any]]:
     identity = security_service.authenticate_request(db, request)
     if required_permissions:
         security_service.require_permissions(identity, required_permissions)
@@ -113,7 +134,6 @@ def _task_to_response(task) -> TaskResponse:
     )
 
 
-@router.on_event("startup")
 def bootstrap_gateway() -> None:
     db = next(get_db())
     try:
@@ -123,7 +143,11 @@ def bootstrap_gateway() -> None:
 
 
 @router.post("/auth/principals")
-def register_principal(payload: PrincipalRegistrationRequest, request: Request, db: Session = Depends(get_db)):
+def register_principal(
+    payload: PrincipalRegistrationRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+):
     existing_principals = db.query(GatewayPrincipal).count()
     if existing_principals > 0:
         _authenticate(db, request, ["gateway:write"])
@@ -145,13 +169,20 @@ def register_principal(payload: PrincipalRegistrationRequest, request: Request, 
         status_text="created",
         success=True,
         message="Gateway principal registered.",
-        data={"principal": response.model_dump(by_alias=True), "clientSecret": secret},
+        data={
+            "principal": response.model_dump(by_alias=True),
+            "clientSecret": secret,
+        },
         status_code=201,
     )
 
 
 @router.post("/auth/api-keys")
-def create_api_key(payload: ApiKeyCreateRequest, request: Request, db: Session = Depends(get_db)):
+def create_api_key(
+    payload: ApiKeyCreateRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+):
     _authenticate(db, request, ["gateway:write"])
     api_key, plain_secret, principal = security_service.create_api_key(db, payload)
     response = ApiKeyResponse(
@@ -165,14 +196,27 @@ def create_api_key(payload: ApiKeyCreateRequest, request: Request, db: Session =
         expiresAt=api_key.expires_at,
         createdAt=api_key.created_at,
     )
-    return _response(request, "created", True, "Gateway credential created.", data=response.model_dump(by_alias=True), status_code=201)
+    return _response(
+        request,
+        "created",
+        True,
+        "Gateway credential created.",
+        data=response.model_dump(by_alias=True),
+        status_code=201,
+    )
 
 
 @router.post("/auth/token")
 def issue_token(payload: TokenRequest, request: Request, db: Session = Depends(get_db)):
     token = security_service.issue_token(db, payload)
     response = TokenResponse(**token)
-    return _response(request, "ok", True, "Access token issued.", data=response.model_dump(by_alias=True))
+    return _response(
+        request,
+        "ok",
+        True,
+        "Access token issued.",
+        data=response.model_dump(by_alias=True),
+    )
 
 
 @router.post("/auth/api-keys/{key_id}/rotate")
@@ -193,18 +237,36 @@ def rotate_api_key(key_id: str, request: Request, db: Session = Depends(get_db))
             createdAt=new_key.created_at,
         ),
     )
-    return _response(request, "ok", True, "Gateway credential rotated.", data=rotated.model_dump(by_alias=True))
+    return _response(
+        request,
+        "ok",
+        True,
+        "Gateway credential rotated.",
+        data=rotated.model_dump(by_alias=True),
+    )
 
 
 @router.get("/health")
 def health(request: Request, db: Session = Depends(get_db)):
     response = HealthStatusResponse(**metrics_service.health(db))
-    return _response(request, "ok", True, "Gateway health is available.", data=response.model_dump(by_alias=True))
+    return _response(
+        request,
+        "ok",
+        True,
+        "Gateway health is available.",
+        data=response.model_dump(by_alias=True),
+    )
 
 
 @router.get("/status")
 def status_endpoint(request: Request, db: Session = Depends(get_db)):
-    return _response(request, "ok", True, "Gateway status is available.", data=metrics_service.status(db))
+    return _response(
+        request,
+        "ok",
+        True,
+        "Gateway status is available.",
+        data=metrics_service.status(db),
+    )
 
 
 @router.get("/version")
@@ -213,34 +275,74 @@ def version(request: Request):
         service="agriculture-ai-gateway",
         version="1.0.0",
         supportedProtocols=["REST", "WebSocket", "SSE", "StreamingResponse"],
-        supportedAuth=["JWT", "API Keys", "Bearer Tokens", "Service Tokens", "Machine Tokens", "OAuth2-compatible client credentials"],
+        supportedAuth=[
+            "JWT",
+            "API Keys",
+            "Bearer Tokens",
+            "Service Tokens",
+            "Machine Tokens",
+            "OAuth2-compatible client credentials",
+        ],
         pluginSupport=True,
     )
-    return _response(request, "ok", True, "Gateway version metadata returned.", data=response.model_dump(by_alias=True))
+    return _response(
+        request,
+        "ok",
+        True,
+        "Gateway version metadata returned.",
+        data=response.model_dump(by_alias=True),
+    )
 
 
 @router.get("/plugins")
 def list_plugins(request: Request, db: Session = Depends(get_db)):
     _authenticate(db, request, ["gateway:read"])
-    plugins = [PluginResponse(**item).model_dump(by_alias=True) for item in plugin_registry.describe()]
-    return _response(request, "ok", True, "Gateway plugins listed.", data={"plugins": plugins})
+    plugins = [
+        PluginResponse(**item).model_dump(by_alias=True)
+        for item in plugin_registry.describe()
+    ]
+    return _response(
+        request,
+        "ok",
+        True,
+        "Gateway plugins listed.",
+        data={"plugins": plugins},
+    )
 
 
 @router.get("/ai/providers")
 def list_ai_providers(request: Request, db: Session = Depends(get_db)):
     _authenticate(db, request, ["gateway:read"])
-    return _response(request, "ok", True, "AI providers listed.", data={"providers": provider_service.catalog()})
+    return _response(
+        request,
+        "ok",
+        True,
+        "AI providers listed.",
+        data={"providers": provider_service.catalog()},
+    )
 
 
 @router.get("/ai/models")
 def list_ai_models(request: Request, db: Session = Depends(get_db)):
     _authenticate(db, request, ["gateway:read"])
-    return _response(request, "ok", True, "AI model catalog listed.", data={"providers": provider_service.model_catalog()})
+    return _response(
+        request,
+        "ok",
+        True,
+        "AI model catalog listed.",
+        data={"providers": provider_service.model_catalog()},
+    )
 
 
 @router.post("/ai/execute")
-async def execute_ai_request(payload: GatewayRequestEnvelope, request: Request, db: Session = Depends(get_db)):
-    identity = _authenticate(db, request, gateway_orchestrator.required_permissions(payload))
+async def execute_ai_request(
+    payload: GatewayRequestEnvelope,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    identity = _authenticate(
+        db, request, gateway_orchestrator.required_permissions(payload)
+    )
     body = await security_service.validate_request_body(request)
     security_service.validate_request_signature(db, identity, body, request)
     security_service.apply_rate_limit(db, request, identity)
@@ -258,12 +360,20 @@ async def execute_ai_request(payload: GatewayRequestEnvelope, request: Request, 
 
 
 @router.post("/actions/execute")
-async def execute_action(payload: GatewayRequestEnvelope, request: Request, db: Session = Depends(get_db)):
+async def execute_action(
+    payload: GatewayRequestEnvelope,
+    request: Request,
+    db: Session = Depends(get_db),
+):
     return await execute_ai_request(payload, request, db)
 
 
 @router.post("/ai/batch")
-async def batch_execute(payload: BatchGatewayRequest, request: Request, db: Session = Depends(get_db)):
+async def batch_execute(
+    payload: BatchGatewayRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+):
     identity = _authenticate(db, request, ["gateway:write"])
     body = await security_service.validate_request_body(request)
     security_service.validate_request_signature(db, identity, body, request)
@@ -271,28 +381,55 @@ async def batch_execute(payload: BatchGatewayRequest, request: Request, db: Sess
     results = []
     for item in payload.requests:
         try:
-            security_service.require_permissions(identity, gateway_orchestrator.required_permissions(item))
+            security_service.require_permissions(
+                identity, gateway_orchestrator.required_permissions(item)
+            )
             result = gateway_orchestrator.process_gateway_request(
                 db=db,
                 request=item,
                 http_method=request.method,
                 path=request.url.path,
                 identity=identity,
-                request_id=item.request_id or f"{request.state.request_id}-{len(results)}",
+                request_id=item.request_id
+                or f"{request.state.request_id}-{len(results)}",
                 trace_id=item.context.trace_id or request.state.trace_id,
                 caller_ip=_caller_ip(request),
                 allow_duplicate=True,
             )
-            results.append({"requestId": item.request_id, "success": True, "data": result})
+            results.append(
+                {"requestId": item.request_id, "success": True, "data": result}
+            )
         except GatewayAPIError as exc:
-            detail = exc.detail if isinstance(exc.detail, dict) else {"code": "BATCH_ERROR", "message": str(exc.detail)}
-            results.append({"requestId": item.request_id, "success": False, "error": detail})
-    return _response(request, "ok", True, "Batch gateway request processed.", data={"results": results})
+            detail = (
+                exc.detail
+                if isinstance(exc.detail, dict)
+                else {"code": "BATCH_ERROR", "message": str(exc.detail)}
+            )
+            results.append(
+                {
+                    "requestId": item.request_id,
+                    "success": False,
+                    "error": detail,
+                }
+            )
+    return _response(
+        request,
+        "ok",
+        True,
+        "Batch gateway request processed.",
+        data={"results": results},
+    )
 
 
 @router.post("/ai/stream")
-async def stream_ai_request(payload: GatewayRequestEnvelope, request: Request, db: Session = Depends(get_db)):
-    identity = _authenticate(db, request, gateway_orchestrator.required_permissions(payload))
+async def stream_ai_request(
+    payload: GatewayRequestEnvelope,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    identity = _authenticate(
+        db, request, gateway_orchestrator.required_permissions(payload)
+    )
     security_service.apply_rate_limit(db, request, identity)
     result = gateway_orchestrator.process_gateway_request(
         db=db,
@@ -344,7 +481,12 @@ async def notifications_stream(request: Request, db: Session = Depends(get_db)):
 async def websocket_notifications(websocket: WebSocket):
     await websocket.accept()
     try:
-        await websocket.send_json({"type": "gateway.connected", "message": "WebSocket notifications ready."})
+        await websocket.send_json(
+            {
+                "type": "gateway.connected",
+                "message": "WebSocket notifications ready.",
+            }
+        )
         while True:
             payload = await websocket.receive_text()
             await websocket.send_json({"type": "gateway.echo", "payload": payload})
@@ -354,7 +496,11 @@ async def websocket_notifications(websocket: WebSocket):
 
 @router.post("/chat/completions")
 @router.post("/ai/chat/completions")
-async def chat_completions(payload: ChatCompletionRequest, request: Request, db: Session = Depends(get_db)):
+async def chat_completions(
+    payload: ChatCompletionRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+):
     identity = _authenticate(db, request, ["gateway:write"])
     body = await security_service.validate_request_body(request)
     security_service.validate_request_signature(db, identity, body, request)
@@ -379,6 +525,7 @@ async def chat_completions(payload: ChatCompletionRequest, request: Request, db:
         correlation_id=payload.context.correlation_id,
     )
     if payload.stream:
+
         async def stream():
             yield f"data: {json.dumps({'eventId': event.event_id, 'status': 'accepted', 'provider': provider['canonicalName']})}\n\n"
             async for chunk in provider_service.stream_chat_completion(
@@ -414,12 +561,20 @@ async def chat_completions(payload: ChatCompletionRequest, request: Request, db:
         "ok",
         True,
         "Chat completion processed by the gateway.",
-        data={"eventId": event.event_id, "completionEventId": completed_event.event_id, **completion},
+        data={
+            "eventId": event.event_id,
+            "completionEventId": completed_event.event_id,
+            **completion,
+        },
     )
 
 
 @router.post("/agents/register")
-def register_agent(payload: PrincipalRegistrationRequest, request: Request, db: Session = Depends(get_db)):
+def register_agent(
+    payload: PrincipalRegistrationRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+):
     agent_payload = payload.model_copy(update={"principal_type": "AI_AGENT"})
     return register_principal(agent_payload, request, db)
 
@@ -427,7 +582,11 @@ def register_agent(payload: PrincipalRegistrationRequest, request: Request, db: 
 @router.get("/agents")
 def list_agents(request: Request, db: Session = Depends(get_db)):
     _authenticate(db, request, ["gateway:read"])
-    agents = db.query(GatewayPrincipal).filter(GatewayPrincipal.principal_type == "AI_AGENT").all()
+    agents = (
+        db.query(GatewayPrincipal)
+        .filter(GatewayPrincipal.principal_type == "AI_AGENT")
+        .all()
+    )
     data = [
         PrincipalResponse(
             principalId=agent.principal_id,
@@ -443,11 +602,18 @@ def list_agents(request: Request, db: Session = Depends(get_db)):
         ).model_dump(by_alias=True)
         for agent in agents
     ]
-    return _response(request, "ok", True, "Gateway agents listed.", data={"agents": data})
+    return _response(
+        request, "ok", True, "Gateway agents listed.", data={"agents": data}
+    )
 
 
 @router.post("/tasks")
-def create_task(payload: TaskCreateRequest, background_tasks: BackgroundTasks, request: Request, db: Session = Depends(get_db)):
+def create_task(
+    payload: TaskCreateRequest,
+    background_tasks: BackgroundTasks,
+    request: Request,
+    db: Session = Depends(get_db),
+):
     identity = _authenticate(db, request, ["tasks:manage", "gateway:write"])
     task = task_service.create_task(
         db=db,
@@ -459,31 +625,58 @@ def create_task(payload: TaskCreateRequest, background_tasks: BackgroundTasks, r
         request_id=payload.request.request_id or request.state.request_id,
     )
     background_tasks.add_task(task_service.process_task_background, task.task_id)
-    return _response(request, "accepted", True, "Gateway task queued.", data=_task_to_response(task).model_dump(by_alias=True), status_code=202)
+    return _response(
+        request,
+        "accepted",
+        True,
+        "Gateway task queued.",
+        data=_task_to_response(task).model_dump(by_alias=True),
+        status_code=202,
+    )
 
 
 @router.get("/tasks/{task_id}")
 def get_task(task_id: str, request: Request, db: Session = Depends(get_db)):
     _authenticate(db, request, ["tasks:read", "gateway:read"])
     task = task_service.get_task(db, task_id)
-    return _response(request, "ok", True, "Gateway task status returned.", data=_task_to_response(task).model_dump(by_alias=True))
+    return _response(
+        request,
+        "ok",
+        True,
+        "Gateway task status returned.",
+        data=_task_to_response(task).model_dump(by_alias=True),
+    )
 
 
 @router.post("/tasks/{task_id}/cancel")
 def cancel_task(task_id: str, request: Request, db: Session = Depends(get_db)):
     _authenticate(db, request, ["tasks:manage", "gateway:write"])
     task = task_service.cancel_task(db, task_id)
-    return _response(request, "ok", True, "Gateway task updated.", data=_task_to_response(task).model_dump(by_alias=True))
+    return _response(
+        request,
+        "ok",
+        True,
+        "Gateway task updated.",
+        data=_task_to_response(task).model_dump(by_alias=True),
+    )
 
 
 @router.post("/tools/execute")
-async def execute_tool(payload: ToolExecutionRequest, request: Request, db: Session = Depends(get_db)):
+async def execute_tool(
+    payload: ToolExecutionRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+):
     identity = _authenticate(db, request, ["tools:execute", "gateway:write"])
     if payload.tool_name == "inventory_lookup":
         envelope = GatewayRequestEnvelope(
             requestId=request.state.request_id,
             context=payload.context,
-            action={"module": "stock", "resource": "inventory", "operation": "snapshot"},
+            action={
+                "module": "stock",
+                "resource": "inventory",
+                "operation": "snapshot",
+            },
             payload=payload.arguments,
         )
         result = gateway_orchestrator.process_gateway_request(
@@ -498,15 +691,21 @@ async def execute_tool(payload: ToolExecutionRequest, request: Request, db: Sess
             allow_duplicate=True,
         )
         return _response(request, "ok", True, "Gateway tool executed.", data=result)
-    raise GatewayAPIError(404, "TOOL_NOT_FOUND", "Requested gateway tool is not registered.")
+    raise GatewayAPIError(
+        404, "TOOL_NOT_FOUND", "Requested gateway tool is not registered."
+    )
 
 
 @router.get("/context/{session_id}")
 def get_context(session_id: str, request: Request, db: Session = Depends(get_db)):
     _authenticate(db, request, ["gateway:read"])
-    context = db.query(GatewaySession).filter(GatewaySession.session_id == session_id).first()
+    context = (
+        db.query(GatewaySession).filter(GatewaySession.session_id == session_id).first()
+    )
     if not context:
-        raise GatewayAPIError(404, "CONTEXT_NOT_FOUND", "Context session was not found.")
+        raise GatewayAPIError(
+            404, "CONTEXT_NOT_FOUND", "Context session was not found."
+        )
     response = ContextSnapshotResponse(
         sessionId=context.session_id,
         conversationId=context.conversation_id,
@@ -522,34 +721,74 @@ def get_context(session_id: str, request: Request, db: Session = Depends(get_db)
         metadata=json_loads(context.metadata_json, {}),
         updatedAt=context.updated_at,
     )
-    return _response(request, "ok", True, "Gateway context returned.", data=response.model_dump(by_alias=True))
+    return _response(
+        request,
+        "ok",
+        True,
+        "Gateway context returned.",
+        data=response.model_dump(by_alias=True),
+    )
 
 
 @router.get("/workspaces/{workspace_id}/context")
-def get_workspace_context(workspace_id: str, request: Request, db: Session = Depends(get_db)):
+def get_workspace_context(
+    workspace_id: str, request: Request, db: Session = Depends(get_db)
+):
     _authenticate(db, request, ["gateway:read"])
-    sessions = db.query(GatewaySession).filter(GatewaySession.workspace_id == workspace_id).all()
-    return _response(request, "ok", True, "Workspace context snapshot returned.", data={"sessions": [item.session_id for item in sessions]})
+    sessions = (
+        db.query(GatewaySession)
+        .filter(GatewaySession.workspace_id == workspace_id)
+        .all()
+    )
+    return _response(
+        request,
+        "ok",
+        True,
+        "Workspace context snapshot returned.",
+        data={"sessions": [item.session_id for item in sessions]},
+    )
 
 
 @router.get("/projects/{project_id}/context")
-def get_project_context(project_id: str, request: Request, db: Session = Depends(get_db)):
+def get_project_context(
+    project_id: str, request: Request, db: Session = Depends(get_db)
+):
     _authenticate(db, request, ["gateway:read"])
-    sessions = db.query(GatewaySession).filter(GatewaySession.project_id == project_id).all()
-    return _response(request, "ok", True, "Project context snapshot returned.", data={"sessions": [item.session_id for item in sessions]})
+    sessions = (
+        db.query(GatewaySession).filter(GatewaySession.project_id == project_id).all()
+    )
+    return _response(
+        request,
+        "ok",
+        True,
+        "Project context snapshot returned.",
+        data={"sessions": [item.session_id for item in sessions]},
+    )
 
 
 @router.get("/users/{user_id}/context")
 def get_user_context(user_id: str, request: Request, db: Session = Depends(get_db)):
     _authenticate(db, request, ["gateway:read"])
     sessions = db.query(GatewaySession).filter(GatewaySession.user_id == user_id).all()
-    return _response(request, "ok", True, "User context snapshot returned.", data={"sessions": [item.session_id for item in sessions]})
+    return _response(
+        request,
+        "ok",
+        True,
+        "User context snapshot returned.",
+        data={"sessions": [item.session_id for item in sessions]},
+    )
 
 
 @router.post("/files/upload")
-async def upload_file(file: UploadFile = File(...), request: Request = None, db: Session = Depends(get_db)):
+async def upload_file(
+    file: UploadFile = File(...),
+    request: Request = None,
+    db: Session = Depends(get_db),
+):
     identity = _authenticate(db, request, ["files:write", "gateway:write"])
-    asset = await file_service.store_file(db, file, identity["principal"].id if identity else None)
+    asset = await file_service.store_file(
+        db, file, identity["principal"].id if identity else None
+    )
     response = FileMetadataResponse(
         fileId=asset.file_id,
         originalName=asset.original_name,
@@ -559,18 +798,33 @@ async def upload_file(file: UploadFile = File(...), request: Request = None, db:
         checksumSha256=asset.checksum_sha256,
         createdAt=asset.created_at,
     )
-    return _response(request, "created", True, "Gateway file stored.", data=response.model_dump(by_alias=True), status_code=201)
+    return _response(
+        request,
+        "created",
+        True,
+        "Gateway file stored.",
+        data=response.model_dump(by_alias=True),
+        status_code=201,
+    )
 
 
 @router.get("/files/{file_id}")
 def get_file(file_id: str, request: Request, db: Session = Depends(get_db)):
     _authenticate(db, request, ["files:read", "gateway:read"])
     asset = file_service.get_asset(db, file_id)
-    return FileResponse(asset.storage_path, media_type=asset.content_type, filename=asset.original_name)
+    return FileResponse(
+        asset.storage_path,
+        media_type=asset.content_type,
+        filename=asset.original_name,
+    )
 
 
 @router.post("/webhooks")
-def register_webhook(payload: WebhookRegistrationRequest, request: Request, db: Session = Depends(get_db)):
+def register_webhook(
+    payload: WebhookRegistrationRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+):
     _authenticate(db, request, ["webhooks:manage", "gateway:write"])
     endpoint = webhook_service.register(db, payload.model_dump(by_alias=True))
     response = WebhookEndpointResponse(
@@ -583,7 +837,14 @@ def register_webhook(payload: WebhookRegistrationRequest, request: Request, db: 
         isActive=endpoint.is_active,
         createdAt=endpoint.created_at,
     )
-    return _response(request, "created", True, "Webhook endpoint registered.", data=response.model_dump(by_alias=True), status_code=201)
+    return _response(
+        request,
+        "created",
+        True,
+        "Webhook endpoint registered.",
+        data=response.model_dump(by_alias=True),
+        status_code=201,
+    )
 
 
 @router.get("/webhooks")
@@ -603,11 +864,22 @@ def list_webhooks(request: Request, db: Session = Depends(get_db)):
         ).model_dump(by_alias=True)
         for endpoint in endpoints
     ]
-    return _response(request, "ok", True, "Webhook endpoints listed.", data={"webhooks": data})
+    return _response(
+        request,
+        "ok",
+        True,
+        "Webhook endpoints listed.",
+        data={"webhooks": data},
+    )
 
 
 @router.post("/events")
-def publish_event(payload: EventPublishRequest, background_tasks: BackgroundTasks, request: Request, db: Session = Depends(get_db)):
+def publish_event(
+    payload: EventPublishRequest,
+    background_tasks: BackgroundTasks,
+    request: Request,
+    db: Session = Depends(get_db),
+):
     _authenticate(db, request, ["events:publish", "gateway:write"])
     event = event_service.publish(
         db=db,
@@ -653,4 +925,6 @@ def list_events(request: Request, db: Session = Depends(get_db)):
         }
         for event in events
     ]
-    return _response(request, "ok", True, "Gateway events listed.", data={"events": data})
+    return _response(
+        request, "ok", True, "Gateway events listed.", data={"events": data}
+    )
