@@ -1,3 +1,11 @@
+databases:
+  - name: agriculture-db-postgres
+    databaseName: agriculture_stock
+    user: agriculture_stock_user
+    plan: free
+    postgresMajorVersion: "15"
+    ipAllowList: []
+
 services:
   - type: web
     name: agriculture-db
@@ -12,15 +20,17 @@ services:
       - key: ENVIRONMENT
         value: production
       - key: DATABASE_URL
-        sync: false
+        fromDatabase:
+          name: agriculture-db-postgres
+          property: connectionString
       - key: GATEWAY_SECRET_KEY
-        sync: false
+        generateValue: true
       - key: GATEWAY_REQUEST_SIGNING_SECRET
-        sync: false
+        generateValue: true
       - key: GATEWAY_BOOTSTRAP_TOKEN
-        sync: false
+        generateValue: true
       - key: GATEWAY_ALLOWED_ORIGINS
-        sync: false
+        value: https://agriculture-db.onrender.com
       - key: GATEWAY_JWT_ALGORITHM
         sync: false
       - key: GATEWAY_JWT_EXPIRES_MINUTES

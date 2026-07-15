@@ -20,6 +20,11 @@ IS_PRODUCTION = ENVIRONMENT in {"production", "prod"}
 
 _configured_database_url = os.getenv("DATABASE_URL")
 if _configured_database_url:
+    # Render Postgres URLs use postgres://; SQLAlchemy expects postgresql://
+    if _configured_database_url.startswith("postgres://"):
+        _configured_database_url = _configured_database_url.replace(
+            "postgres://", "postgresql://", 1
+        )
     DATABASE_URL = _configured_database_url
 elif IS_PRODUCTION:
     raise RuntimeError(
