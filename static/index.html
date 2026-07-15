@@ -1224,6 +1224,7 @@ function buildAuthHeaders() {
 function formatApiError(err) {
   if (!err) return 'Request failed';
   if (typeof err === 'string') return err;
+  if (err instanceof Error) return err.message || 'Request failed';
   if (err.detail) return typeof err.detail === 'string' ? err.detail : JSON.stringify(err.detail);
   if (Array.isArray(err.errors) && err.errors[0]?.message) return err.errors[0].message;
   if (err.message) return err.message;
@@ -1519,7 +1520,7 @@ async function loadDashboard() {
     }
   } catch(e) {
     document.getElementById('dash-stats').innerHTML =
-      `<div class="alert alert-error">❌ Failed to load dashboard: ${e.detail||e}</div>`;
+      `<div class="alert alert-error">❌ Failed to load dashboard: ${formatApiError(e)}</div>`;
   }
 }
 
@@ -1543,7 +1544,7 @@ async function loadInventory() {
       <td>${statusBadge(r.status)}</td>
     </tr>`).join('') || '<tr><td colspan="7" class="empty">No data</td></tr>';
   } catch(e) {
-    tb.innerHTML = `<tr><td colspan="7"><div class="alert alert-error">Error: ${e.detail||e}</div></td></tr>`;
+    tb.innerHTML = `<tr><td colspan="7"><div class="alert alert-error">Error: ${formatApiError(e)}</div></td></tr>`;
   }
 }
 
@@ -1633,7 +1634,7 @@ async function loadForecast() {
       </div>
     `;
   } catch(e) {
-    el.innerHTML = `<div class="alert alert-error">❌ ${e.detail||e}</div>`;
+    el.innerHTML = `<div class="alert alert-error">❌ ${formatApiError(e)}</div>`;
   }
 }
 
@@ -1690,7 +1691,7 @@ async function registerFarmer() {
     const r = await api('/stock/farmers',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     showAlert('fn-result',`Farmer "${r.full_name}" registered with ID ${r.farmer_id}.`,'ok');
     loadFarmers();
-  } catch(e) { showAlert('fn-result',`Error: ${e.detail||e}`,'error'); }
+  } catch(e) { showAlert('fn-result',`Error: ${formatApiError(e)}`,'error'); }
 }
 
 async function loadProducts() {
@@ -1715,7 +1716,7 @@ async function registerProduct() {
     const r = await api('/stock/products',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     showAlert('pr-result',`Product "${r.product_name}" registered (ID ${r.product_id}).`,'ok');
     loadProducts();
-  } catch(e) { showAlert('pr-result',`Error: ${e.detail||e}`,'error'); }
+  } catch(e) { showAlert('pr-result',`Error: ${formatApiError(e)}`,'error'); }
 }
 
 async function loadWarehouses() {
@@ -1740,7 +1741,7 @@ async function registerWarehouse() {
     const r = await api('/stock/warehouses',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     showAlert('wh-result',`Warehouse "${r.warehouse_name}" registered (ID ${r.warehouse_id}).`,'ok');
     loadWarehouses();
-  } catch(e) { showAlert('wh-result',`Error: ${e.detail||e}`,'error'); }
+  } catch(e) { showAlert('wh-result',`Error: ${formatApiError(e)}`,'error'); }
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -1785,7 +1786,7 @@ async function loadQuality() {
       </tr>`).join('')}
       </tbody>
     </table></div>`;
-  } catch(e) { tb.innerHTML = `<tr><td colspan="9"><div class="alert alert-error">Error: ${e.detail||e}</div></td></tr>`; }
+  } catch(e) { tb.innerHTML = `<tr><td colspan="9"><div class="alert alert-error">Error: ${formatApiError(e)}</div></td></tr>`; }
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -1932,7 +1933,7 @@ async function loadReports() {
       : '<div class="empty">✅ No actions required — all inventory levels are healthy.</div>';
 
   } catch(e) {
-    statsEl.innerHTML = `<div class="alert alert-error">❌ ${e.detail||e}</div>`;
+    statsEl.innerHTML = `<div class="alert alert-error">❌ ${formatApiError(e)}</div>`;
   }
 }
 
