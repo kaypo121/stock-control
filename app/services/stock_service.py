@@ -109,6 +109,8 @@ class StockService:
         """Recalculates the stock balance from the complete transaction history."""
         balance = self.repo.get_or_create_balance(farmer_id, product_id, warehouse_id)
         product = self.repo.get_product_by_id(product_id)
+        if product is None:
+            raise ValueError(f"Product with id {product_id} was not found.")
         base_unit = product.unit
 
         # Fetch all transactions sorted chronologically

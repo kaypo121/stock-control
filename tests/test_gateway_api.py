@@ -12,6 +12,7 @@ def _create_admin_principal(client):
             "workspaceId": "workspace-1",
             "projectId": "project-1",
         },
+        headers={"X-Gateway-Bootstrap-Token": "test-bootstrap-token"},
     )
     assert response.status_code == 201
     payload = response.json()["data"]

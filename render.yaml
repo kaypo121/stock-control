@@ -5,16 +5,19 @@ services:
     plan: free
     buildCommand: pip install -r requirements.txt
     startCommand: gunicorn app.main:app --workers 1 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:$PORT
+    healthCheckPath: /health
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.0
       - key: ENVIRONMENT
-        value: development
+        value: production
       - key: DATABASE_URL
         sync: false
       - key: GATEWAY_SECRET_KEY
         sync: false
       - key: GATEWAY_REQUEST_SIGNING_SECRET
+        sync: false
+      - key: GATEWAY_BOOTSTRAP_TOKEN
         sync: false
       - key: GATEWAY_ALLOWED_ORIGINS
         sync: false
@@ -38,15 +41,29 @@ services:
         sync: false
       - key: GATEWAY_ALLOWED_IPS
         sync: false
+      - key: GATEWAY_TRUST_PROXY_HEADERS
+        sync: false
+      - key: GATEWAY_TRUSTED_PROXIES
+        sync: false
       - key: GATEWAY_CORS_ALLOW_CREDENTIALS
         sync: false
+      - key: GATEWAY_BURST_LIMIT
+        sync: false
+      - key: GATEWAY_ENABLE_CSRF
+        sync: false
       - key: GATEWAY_UPLOAD_DIR
+        sync: false
+      - key: GATEWAY_WEBHOOK_ALLOWED_HOSTS
+        sync: false
+      - key: GATEWAY_WEBHOOK_ALLOW_PRIVATE_NETWORKS
         sync: false
       - key: DATA_RAW_DIR
         sync: false
       - key: DATA_PROCESSED_DIR
         sync: false
       - key: DATA_ERROR_LOGS_DIR
+        sync: false
+      - key: REDIS_URL
         sync: false
       - key: AI_PROVIDER_TIMEOUT_SECONDS
         sync: false

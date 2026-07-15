@@ -19,6 +19,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from app.api.dependencies import require_permissions
 from app.database import get_db
 from app.models.quality_models import (
     FreshnessLevel,
@@ -111,6 +112,7 @@ def _build_response(a: QualityAssessment) -> QualityAssessmentResponse:
     "/assess",
     response_model=QualityAssessmentResponse,
     status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_permissions("quality:write"))],
     summary="Submit a new quality assessment",
     description="""
 Runs a full quality assessment on any agricultural product.
@@ -142,15 +144,12 @@ def submit_assessment(
         return _build_response(assessment)
     except ValueError as ve:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(ve))
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
-        )
 
 
 @router.get(
     "/assessments",
     response_model=List[AssessmentListItem],
+    dependencies=[Depends(require_permissions("quality:read"))],
     summary="List quality assessments",
 )
 def list_assessments(
@@ -198,6 +197,7 @@ def list_assessments(
 @router.get(
     "/assessments/{assessment_id}",
     response_model=QualityAssessmentResponse,
+    dependencies=[Depends(require_permissions("quality:read"))],
     summary="Get a single assessment by ID",
 )
 def get_assessment(
@@ -217,6 +217,7 @@ def get_assessment(
 @router.delete(
     "/assessments/{assessment_id}",
     status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_permissions("quality:write"))],
     summary="Delete an assessment record",
 )
 def delete_assessment(
@@ -235,6 +236,7 @@ def delete_assessment(
 @router.get(
     "/summary",
     response_model=List[Dict[str, Any]],
+    dependencies=[Depends(require_permissions("quality:read"))],
     summary="Aggregated quality statistics by product",
 )
 def quality_summary(
@@ -309,6 +311,7 @@ def quality_summary(
 
 @router.get(
     "/categories",
+    dependencies=[Depends(require_permissions("quality:read"))],
     summary="Reference: valid categories, grades, risk levels, and recommendations",
 )
 def get_reference_enums() -> Dict[str, List[str]]:

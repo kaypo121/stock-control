@@ -156,8 +156,10 @@ class AIProviderService:
         api_key = (
             os.getenv(definition.env_api_key, "") if definition.env_api_key else ""
         )
-        base_url = os.getenv(
-            definition.env_base_url, definition.default_base_url
+        base_url = (
+            os.getenv(definition.env_base_url, definition.default_base_url)
+            if definition.env_base_url
+            else definition.default_base_url
         ).rstrip("/")
         configured = bool(base_url) and (
             bool(api_key) if definition.requires_api_key else True

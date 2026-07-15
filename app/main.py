@@ -1,3 +1,4 @@
+import logging
 import time
 from contextlib import asynccontextmanager
 from importlib import import_module
@@ -8,6 +9,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy import text
 
 from app.api.endpoints import router as stock_router
 from app.api.gateway_endpoints import router as gateway_router
@@ -17,23 +19,27 @@ from app.config import (
     APP_VERSION,
     GATEWAY_ALLOWED_ORIGINS,
     GATEWAY_CORS_ALLOW_CREDENTIALS,
+    IS_PRODUCTION,
 )
-from app.database import Base, SessionLocal, engine
+from app.database import Base
+import app.database as database
 from app.middleware.gateway_middleware import (
     IPAllowListMiddleware,
     RequestContextMiddleware,
     SecurityHeadersMiddleware,
 )
-from app.schemas.gateway_schemas import GatewayResponseEnvelope
+from app.schemas.gateway_schemas import GatewayResponseEnvelope, GatewayErrorDetail, GatewayWarning
 from app.services.gateway_security import GatewayAPIError
 from app.exceptions import AppError
 from app.services.gateway_service import gateway_orchestrator
 
+logger = logging.getLogger(__name__)
+
 
 @asynccontextmanager
 async def lifespan_context(_: FastAPI):
-    Base.metadata.create_all(bind=engine)
-    db = SessionLocal()
+    Base.metadata.create_all(bind=database.engine)
+    db = database.SessionLocal()
     try:
         gateway_orchestrator.bootstrap(db)
         yield
@@ -110,7 +116,7 @@ def _error_response(
         success=False,
         message=message,
         data=None,
-        errors=[{"code": code, "message": message, "detail": detail}],
+        errors=[GatewayErrorDetail(code=code, message=message, detail=detail)],
         warnings=[],
         metadata={"path": request.url.path},
         processingTime=_processing_time_ms(request),
@@ -139,7 +145,7 @@ async def handle_gateway_api_error(request: Request, exc: GatewayAPIError):
     )
     code = detail.get("code", "GATEWAY_ERROR")
     message = detail.get("message", "Gateway request failed.")
-    log_db = SessionLocal()
+    log_db = database.SessionLocal()
     try:
         if request.url.path.startswith("/v1"):
             gateway_orchestrator.log_failure(
@@ -163,7 +169,7 @@ async def handle_gateway_api_error(request: Request, exc: GatewayAPIError):
                 message=message,
                 identity=None,
             )
-    except RuntimeError:
+    except (RuntimeError, ValueError, AttributeError, TypeError):
         pass
     finally:
         log_db.close()
@@ -177,12 +183,11 @@ async def handle_request_validation_error(
     request: Request, exc: RequestValidationError
 ):
     errors = [
-        {
-            "code": "VALIDATION_ERROR",
-            "message": item.get("msg", "Invalid request value."),
-            "field": ".".join(str(part) for part in item.get("loc", [])),
-            "detail": item.get("input"),
-        }
+        GatewayErrorDetail(
+            code="VALIDATION_ERROR",
+            message=item.get("msg", "Invalid request value."),
+            field=".".join(str(part) for part in item.get("loc", [])),
+        )
         for item in exc.errors()
     ]
     body = GatewayResponseEnvelope(
@@ -227,18 +232,23 @@ async def handle_http_exception(request: Request, exc: HTTPException):
 
 @app.exception_handler(Exception)
 async def handle_unexpected_exception(request: Request, exc: Exception):
+    logger.exception("Unhandled application exception on %s", request.url.path, exc_info=exc)
     # Convert known AppError subclasses into structured gateway errors
     if isinstance(exc, AppError):
         code = getattr(exc, "code", "APP_ERROR") or "APP_ERROR"
         return _error_response(
-            request, 500, code, str(exc), getattr(exc, "details", None)
+            request,
+            500,
+            code,
+            str(exc),
+            getattr(exc, "details", None) if not IS_PRODUCTION else None,
         )
     return _error_response(
         request,
         500,
         "INTERNAL_SERVER_ERROR",
         "An unexpected gateway error occurred.",
-        str(exc),
+        None,
     )
 
 
@@ -260,6 +270,18 @@ app.add_middleware(SecurityHeadersMiddleware)
 def root():
     static_path = Path(__file__).parent.parent / "static" / "index.html"
     return FileResponse(str(static_path))
+
+
+@app.get("/health", include_in_schema=False)
+def health_check():
+    with database.engine.connect() as connection:
+        connection.execute(text("SELECT 1"))
+    return {
+        "status": "ok",
+        "database": "up",
+        "environment": "production" if IS_PRODUCTION else "development",
+        "version": APP_VERSION,
+    }
 
 
 @app.get("/favicon.png", include_in_schema=False)

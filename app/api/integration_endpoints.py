@@ -18,13 +18,15 @@ GET    /integration/health                    Quick health summary
 """
 
 import json
+from uuid import uuid4
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from sqlalchemy.orm import Session
 
-from app.config import DATA_RAW_DIR
+from app.api.dependencies import require_permissions
+from app.config import DATA_RAW_DIR, GATEWAY_FILE_SIZE_LIMIT_BYTES
 from app.database import get_db
 from app.models.integration_models import DataIntegrationSession
 from app.schemas.integration_schemas import (
@@ -61,6 +63,16 @@ def _session_to_item(s: DataIntegrationSession) -> SessionListItem:
     )
 
 
+def _build_upload_path(filename: str) -> Path:
+    original_name = Path(filename).name.strip()
+    if not original_name:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="A valid file name is required.",
+        )
+    return Path(DATA_RAW_DIR) / f"{uuid4().hex}_{original_name}"
+
+
 # ── Upload & run pipeline ─────────────────────────────────────────────────────
 
 
@@ -68,6 +80,7 @@ def _session_to_item(s: DataIntegrationSession) -> SessionListItem:
     "/upload",
     response_model=IntegrationPipelineResult,
     status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_permissions("integration:write"))],
     summary="Upload a file and run the full 7-step integration pipeline",
     description="""
 Upload any supported file (CSV, Excel, JSON) containing agricultural data.
@@ -91,16 +104,40 @@ async def upload_and_integrate(
     ),
     db: Session = Depends(get_db),
 ) -> IntegrationPipelineResult:
+    if not file.filename:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="A file name is required.",
+        )
     suffix = Path(file.filename).suffix.lower()
     if suffix not in (".csv", ".xlsx", ".xls", ".json"):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Unsupported file type '{suffix}'. Use .csv, .xlsx, .xls, or .json",
         )
-    save_path = Path(DATA_RAW_DIR) / file.filename
-    content = await file.read()
-    with open(save_path, "wb") as f:
-        f.write(content)
+    save_path = _build_upload_path(file.filename)
+    size_bytes = 0
+    try:
+        with save_path.open("wb") as uploaded_file:
+            while True:
+                chunk = await file.read(1024 * 1024)
+                if not chunk:
+                    break
+                size_bytes += len(chunk)
+                if size_bytes > GATEWAY_FILE_SIZE_LIMIT_BYTES:
+                    raise HTTPException(
+                        status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                        detail=(
+                            "Uploaded file exceeds the configured size limit of "
+                            f"{GATEWAY_FILE_SIZE_LIMIT_BYTES} bytes."
+                        ),
+                    )
+                uploaded_file.write(chunk)
+    except Exception:
+        save_path.unlink(missing_ok=True)
+        raise
+    finally:
+        await file.close()
     service = DataIntegrationService(db)
     return service.run_pipeline(save_path, initiated_by=initiated_by or "API User")
 
@@ -110,6 +147,7 @@ async def upload_and_integrate(
 
 @router.post(
     "/scan",
+    dependencies=[Depends(require_permissions("integration:write"))],
     summary="Scan the raw data folder and run the pipeline on all files",
 )
 def scan_and_integrate(
@@ -118,7 +156,7 @@ def scan_and_integrate(
 ) -> Dict[str, Any]:
     service = DataIntegrationService(db)
     results, errors = [], []
-    for ext in ("*.csv", "*.xlsx", "*.xls"):
+    for ext in ("*.csv", "*.xlsx", "*.xls", "*.json"):
         for f in Path(DATA_RAW_DIR).glob(ext):
             try:
                 res = service.run_pipeline(f, initiated_by=initiated_by or "System")
@@ -147,6 +185,7 @@ def scan_and_integrate(
 @router.get(
     "/sessions",
     response_model=List[SessionListItem],
+    dependencies=[Depends(require_permissions("integration:read"))],
     summary="List all import sessions",
 )
 def list_sessions(
@@ -163,6 +202,7 @@ def list_sessions(
 @router.get(
     "/sessions/{session_id}",
     response_model=SessionDetailResponse,
+    dependencies=[Depends(require_permissions("integration:read"))],
     summary="Get full detail for one import session",
 )
 def get_session(
@@ -177,6 +217,7 @@ def get_session(
 @router.delete(
     "/sessions/{session_id}",
     status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_permissions("integration:write"))],
     summary="Delete an integration session and its reports",
 )
 def delete_session(session_id: int, db: Session = Depends(get_db)):
@@ -194,6 +235,7 @@ def delete_session(session_id: int, db: Session = Depends(get_db)):
 @router.get(
     "/sessions/{session_id}/reports",
     response_model=List[ReportListItem],
+    dependencies=[Depends(require_permissions("integration:read"))],
     summary="List all reports generated for a session",
 )
 def list_session_reports(
@@ -212,6 +254,7 @@ def list_session_reports(
 
 @router.get(
     "/reports/standalone",
+    dependencies=[Depends(require_permissions("integration:read"))],
     summary="Generate all 5 live reports from current DB state (no file upload needed)",
     description="""
 Generates reports directly from the live database.
@@ -229,6 +272,7 @@ def standalone_reports(db: Session = Depends(get_db)) -> Dict[str, Any]:
 
 @router.get(
     "/reports/{report_id}",
+    dependencies=[Depends(require_permissions("integration:read"))],
     summary="Get the full JSON payload of a specific report",
 )
 def get_report(report_id: int, db: Session = Depends(get_db)) -> Dict[str, Any]:
@@ -251,6 +295,7 @@ def get_report(report_id: int, db: Session = Depends(get_db)) -> Dict[str, Any]:
 @router.get(
     "/inventory",
     response_model=List[InventoryStats],
+    dependencies=[Depends(require_permissions("integration:read"))],
     summary="Live inventory statistics for all products",
 )
 def live_inventory(
@@ -270,7 +315,11 @@ def live_inventory(
     return stats
 
 
-@router.get("/health", summary="Quick inventory health snapshot")
+@router.get(
+    "/health",
+    dependencies=[Depends(require_permissions("integration:read"))],
+    summary="Quick inventory health snapshot",
+)
 def health_snapshot(db: Session = Depends(get_db)) -> Dict[str, Any]:
     import datetime
 

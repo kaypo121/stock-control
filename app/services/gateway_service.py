@@ -1,12 +1,15 @@
 import asyncio
 import hashlib
+import ipaddress
 import json
 import os
+import socket
 import time
 import uuid
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
+from urllib.parse import urlparse
 
 import httpx
 from fastapi import UploadFile, status
@@ -20,6 +23,8 @@ from app.config import (
     GATEWAY_FILE_SIZE_LIMIT_BYTES,
     GATEWAY_SUPPORTED_FILE_TYPES,
     GATEWAY_UPLOAD_DIR,
+    GATEWAY_WEBHOOK_ALLOWED_HOSTS,
+    GATEWAY_WEBHOOK_ALLOW_PRIVATE_NETWORKS,
 )
 from app.database import SessionLocal
 from app.models.gateway_models import (
@@ -80,6 +85,70 @@ def serialize_datetime(value: Any) -> Any:
     return value
 
 
+def _host_matches_allowlist(hostname: str) -> bool:
+    if not GATEWAY_WEBHOOK_ALLOWED_HOSTS:
+        return True
+    normalized = hostname.lower()
+    return any(
+        normalized == allowed or normalized.endswith(f".{allowed}")
+        for allowed in GATEWAY_WEBHOOK_ALLOWED_HOSTS
+    )
+
+
+def _is_private_network_host(hostname: str) -> bool:
+    normalized = hostname.lower()
+    if normalized in {"localhost", "localhost.localdomain"}:
+        return True
+    try:
+        candidate_ips = {ipaddress.ip_address(normalized)}
+    except ValueError:
+        try:
+            candidate_ips = {
+                ipaddress.ip_address(item[4][0])
+                for item in socket.getaddrinfo(normalized, None, type=socket.SOCK_STREAM)
+            }
+        except socket.gaierror:
+            return False
+    return any(
+        ip.is_private
+        or ip.is_loopback
+        or ip.is_link_local
+        or ip.is_multicast
+        or ip.is_reserved
+        or ip.is_unspecified
+        for ip in candidate_ips
+    )
+
+
+def validate_webhook_target(target_url: str) -> None:
+    parsed = urlparse(target_url)
+    hostname = (parsed.hostname or "").strip().lower()
+    if parsed.scheme != "https":
+        raise GatewayAPIError(
+            status.HTTP_400_BAD_REQUEST,
+            "INVALID_WEBHOOK_TARGET",
+            "Webhook targets must use HTTPS.",
+        )
+    if not hostname:
+        raise GatewayAPIError(
+            status.HTTP_400_BAD_REQUEST,
+            "INVALID_WEBHOOK_TARGET",
+            "Webhook target hostname is required.",
+        )
+    if not _host_matches_allowlist(hostname):
+        raise GatewayAPIError(
+            status.HTTP_400_BAD_REQUEST,
+            "INVALID_WEBHOOK_TARGET",
+            "Webhook target host is not allow-listed.",
+        )
+    if not GATEWAY_WEBHOOK_ALLOW_PRIVATE_NETWORKS and _is_private_network_host(hostname):
+        raise GatewayAPIError(
+            status.HTTP_400_BAD_REQUEST,
+            "INVALID_WEBHOOK_TARGET",
+            "Webhook targets cannot resolve to private or local network addresses.",
+        )
+
+
 class CacheService:
     def __init__(self) -> None:
         self._memory_store: Dict[str, Tuple[float, Any]] = {}
@@ -103,7 +172,10 @@ class CacheService:
     def get(self, key: str) -> Any:
         if self._redis_client:
             raw = self._redis_client.get(key)
-            return json_loads(raw, None) if raw else None
+            if raw:
+                raw_str = raw.decode("utf-8") if isinstance(raw, bytes) else str(raw)
+                return json_loads(raw_str, None)
+            return None
         record = self._memory_store.get(key)
         if not record:
             return None
@@ -649,6 +721,7 @@ class GatewayEventService:
 
 class GatewayWebhookService:
     def register(self, db: Session, payload: Dict[str, Any]) -> GatewayWebhookEndpoint:
+        validate_webhook_target(str(payload["targetUrl"]))
         endpoint = GatewayWebhookEndpoint(
             name=payload["name"],
             target_url=str(payload["targetUrl"]),
@@ -731,7 +804,10 @@ class GatewayWebhookService:
         }
         headers.update(json_loads(endpoint.headers_json, {}))
         try:
-            async with httpx.AsyncClient(timeout=endpoint.timeout_seconds) as client:
+            async with httpx.AsyncClient(
+                timeout=endpoint.timeout_seconds,
+                follow_redirects=False,
+            ) as client:
                 response = await client.post(
                     endpoint.target_url, content=encoded, headers=headers
                 )
@@ -824,6 +900,7 @@ class GatewayTaskService:
 
     async def _process_task(self, task_id: str) -> None:
         db = SessionLocal()
+        task = None
         try:
             task = db.query(GatewayTask).filter(GatewayTask.task_id == task_id).first()
             if not task or task.status == "CANCELLED":
@@ -852,7 +929,7 @@ class GatewayTaskService:
             task.completed_at = utcnow()
             db.commit()
         except Exception as exc:
-            if "task" in locals() and task:
+            if task is not None:
                 task.status = "FAILED"
                 task.error_message = str(exc)
                 task.completed_at = utcnow()
@@ -870,14 +947,6 @@ class GatewayFileService:
     async def store_file(
         self, db: Session, upload: UploadFile, principal_id: Optional[int]
     ) -> GatewayFileAsset:
-        content = await upload.read()
-        if len(content) > GATEWAY_FILE_SIZE_LIMIT_BYTES:
-            raise GatewayAPIError(
-                status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-                "FILE_TOO_LARGE",
-                "Uploaded file exceeds the configured size limit.",
-                {"maxBytes": GATEWAY_FILE_SIZE_LIMIT_BYTES},
-            )
         extension = Path(upload.filename or "").suffix.lower()
         if extension and extension not in GATEWAY_SUPPORTED_FILE_TYPES:
             raise GatewayAPIError(
@@ -886,17 +955,38 @@ class GatewayFileService:
                 "File type is not supported by the gateway.",
             )
         file_id = str(uuid.uuid4())
-        checksum = hashlib.sha256(content).hexdigest()
         storage_path = Path(GATEWAY_UPLOAD_DIR) / f"{file_id}{extension or '.bin'}"
-        storage_path.write_bytes(content)
+        checksum_builder = hashlib.sha256()
+        size_bytes = 0
+        try:
+            with storage_path.open("wb") as stored_file:
+                while True:
+                    chunk = await upload.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    size_bytes += len(chunk)
+                    if size_bytes > GATEWAY_FILE_SIZE_LIMIT_BYTES:
+                        raise GatewayAPIError(
+                            status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                            "FILE_TOO_LARGE",
+                            "Uploaded file exceeds the configured size limit.",
+                            {"maxBytes": GATEWAY_FILE_SIZE_LIMIT_BYTES},
+                        )
+                    checksum_builder.update(chunk)
+                    stored_file.write(chunk)
+        except Exception:
+            storage_path.unlink(missing_ok=True)
+            raise
+        finally:
+            await upload.close()
         asset = GatewayFileAsset(
             file_id=file_id,
             principal_id=principal_id,
             original_name=upload.filename or file_id,
             content_type=upload.content_type or "application/octet-stream",
             extension=extension or ".bin",
-            size_bytes=len(content),
-            checksum_sha256=checksum,
+            size_bytes=size_bytes,
+            checksum_sha256=checksum_builder.hexdigest(),
             storage_path=str(storage_path),
             metadata_json=json_dumps({"filename": upload.filename}),
         )
@@ -905,7 +995,12 @@ class GatewayFileService:
         db.refresh(asset)
         return asset
 
-    def get_asset(self, db: Session, file_id: str) -> GatewayFileAsset:
+    def get_asset(
+        self,
+        db: Session,
+        file_id: str,
+        identity: Optional[Dict[str, Any]] = None,
+    ) -> GatewayFileAsset:
         asset = (
             db.query(GatewayFileAsset)
             .filter(GatewayFileAsset.file_id == file_id)
@@ -916,6 +1011,18 @@ class GatewayFileService:
                 status.HTTP_404_NOT_FOUND,
                 "FILE_NOT_FOUND",
                 "File was not found.",
+            )
+        permissions = set(identity.get("permissions", [])) if identity else set()
+        principal = identity.get("principal") if identity else None
+        owns_file = bool(principal and asset.principal_id == principal.id)
+        elevated_access = bool(
+            permissions.intersection({"*", "files:manage", "gateway:write"})
+        )
+        if asset.principal_id is not None and not owns_file and not elevated_access:
+            raise GatewayAPIError(
+                status.HTTP_403_FORBIDDEN,
+                "FILE_ACCESS_DENIED",
+                "The authenticated principal cannot access this file.",
             )
         return asset
 

@@ -16,7 +16,8 @@ from fastapi import (
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from sqlalchemy.orm import Session
 
-from app.database import get_db
+from app.config import APP_VERSION, GATEWAY_BOOTSTRAP_TOKEN
+from app.database import SessionLocal, get_db
 from app.models.gateway_models import GatewayPrincipal, GatewaySession
 from app.schemas.gateway_schemas import (
     ApiKeyCreateRequest,
@@ -26,9 +27,11 @@ from app.schemas.gateway_schemas import (
     ContextSnapshotResponse,
     EventPublishRequest,
     FileMetadataResponse,
+    GatewayActionEnvelope,
     GatewayErrorDetail,
     GatewayRequestEnvelope,
     GatewayResponseEnvelope,
+    GatewayWarning,
     HealthStatusResponse,
     PluginResponse,
     PrincipalRegistrationRequest,
@@ -82,7 +85,7 @@ def _response(
         message=message,
         data=data,
         errors=[GatewayErrorDetail(**item) for item in (errors or [])],
-        warnings=warnings or [],
+        warnings=[GatewayWarning(**item) for item in (warnings or [])],
         metadata=metadata or {},
         processingTime=processing_ms,
         traceId=getattr(
@@ -114,6 +117,22 @@ def _authenticate(
     if required_permissions:
         security_service.require_permissions(identity, required_permissions)
     return identity
+
+
+def _require_bootstrap_token(request: Request) -> None:
+    if not GATEWAY_BOOTSTRAP_TOKEN:
+        raise GatewayAPIError(
+            503,
+            "BOOTSTRAP_DISABLED",
+            "Gateway bootstrap is disabled until a bootstrap token is configured.",
+        )
+    presented_token = request.headers.get("X-Gateway-Bootstrap-Token", "").strip()
+    if presented_token != GATEWAY_BOOTSTRAP_TOKEN:
+        raise GatewayAPIError(
+            401,
+            "INVALID_BOOTSTRAP_TOKEN",
+            "A valid bootstrap token is required to create the first gateway principal.",
+        )
 
 
 def _task_to_response(task) -> TaskResponse:
@@ -151,6 +170,8 @@ def register_principal(
     existing_principals = db.query(GatewayPrincipal).count()
     if existing_principals > 0:
         _authenticate(db, request, ["gateway:write"])
+    else:
+        _require_bootstrap_token(request)
     principal, secret = security_service.create_principal(db, payload)
     response = PrincipalResponse(
         principalId=principal.principal_id,
@@ -273,7 +294,7 @@ def status_endpoint(request: Request, db: Session = Depends(get_db)):
 def version(request: Request):
     response = VersionResponse(
         service="agriculture-ai-gateway",
-        version="1.0.0",
+        version=APP_VERSION,
         supportedProtocols=["REST", "WebSocket", "SSE", "StreamingResponse"],
         supportedAuth=[
             "JWT",
@@ -479,8 +500,11 @@ async def notifications_stream(request: Request, db: Session = Depends(get_db)):
 
 @router.websocket("/ws/notifications")
 async def websocket_notifications(websocket: WebSocket):
-    await websocket.accept()
+    db = SessionLocal()
     try:
+        identity = security_service.authenticate_websocket(db, websocket)
+        security_service.require_permissions(identity, ["gateway:read"])
+        await websocket.accept()
         await websocket.send_json(
             {
                 "type": "gateway.connected",
@@ -490,8 +514,13 @@ async def websocket_notifications(websocket: WebSocket):
         while True:
             payload = await websocket.receive_text()
             await websocket.send_json({"type": "gateway.echo", "payload": payload})
+    except GatewayAPIError as exc:
+        code_str = exc.detail.get("code", "AUTH_REQUIRED") if isinstance(exc.detail, dict) else "AUTH_REQUIRED"
+        await websocket.close(code=1008, reason=code_str)
     except WebSocketDisconnect:
         return
+    finally:
+        db.close()
 
 
 @router.post("/chat/completions")
@@ -672,11 +701,11 @@ async def execute_tool(
         envelope = GatewayRequestEnvelope(
             requestId=request.state.request_id,
             context=payload.context,
-            action={
-                "module": "stock",
-                "resource": "inventory",
-                "operation": "snapshot",
-            },
+            action=GatewayActionEnvelope(
+                module="stock",
+                resource="inventory",
+                operation="snapshot",
+            ),
             payload=payload.arguments,
         )
         result = gateway_orchestrator.process_gateway_request(
@@ -781,8 +810,8 @@ def get_user_context(user_id: str, request: Request, db: Session = Depends(get_d
 
 @router.post("/files/upload")
 async def upload_file(
+    request: Request,
     file: UploadFile = File(...),
-    request: Request = None,
     db: Session = Depends(get_db),
 ):
     identity = _authenticate(db, request, ["files:write", "gateway:write"])
@@ -810,8 +839,8 @@ async def upload_file(
 
 @router.get("/files/{file_id}")
 def get_file(file_id: str, request: Request, db: Session = Depends(get_db)):
-    _authenticate(db, request, ["files:read", "gateway:read"])
-    asset = file_service.get_asset(db, file_id)
+    identity = _authenticate(db, request, ["files:read", "gateway:read"])
+    asset = file_service.get_asset(db, file_id, identity=identity)
     return FileResponse(
         asset.storage_path,
         media_type=asset.content_type,

@@ -51,7 +51,7 @@ ALLOW_NEGATIVE_STOCK = os.getenv("ALLOW_NEGATIVE_STOCK", "False").lower() in (
 
 # ── Data Directory Configuration ─────────────────────────────────────────────
 if os.name == "nt":
-    DATA_RAW_DIR = Path(os.getenv("DATA_RAW_DIR", str(BASE_DIR / "datesets folder")))
+    DATA_RAW_DIR = Path(os.getenv("DATA_RAW_DIR", str(BASE_DIR / "datasets")))
     DATA_PROCESSED_DIR = Path(
         os.getenv("DATA_PROCESSED_DIR", str(BASE_DIR / "data" / "processed"))
     )
@@ -60,7 +60,7 @@ if os.name == "nt":
     )
 else:
     # Serverless or read-only UNIX environments like Vercel — write to /tmp only
-    DATA_RAW_DIR = Path(os.getenv("DATA_RAW_DIR", "/tmp/datesets_folder"))
+    DATA_RAW_DIR = Path(os.getenv("DATA_RAW_DIR", "/tmp/datasets"))
     DATA_PROCESSED_DIR = Path(os.getenv("DATA_PROCESSED_DIR", "/tmp/data/processed"))
     DATA_ERROR_LOGS_DIR = Path(os.getenv("DATA_ERROR_LOGS_DIR", "/tmp/data/error_logs"))
 
@@ -79,6 +79,7 @@ GATEWAY_REQUEST_SIGNING_SECRET = os.getenv(
     "GATEWAY_REQUEST_SIGNING_SECRET",
     "change-this-signing-secret-in-production",
 )
+GATEWAY_BOOTSTRAP_TOKEN = os.getenv("GATEWAY_BOOTSTRAP_TOKEN", "").strip()
 if IS_PRODUCTION and (
     GATEWAY_SECRET_KEY == "change-this-gateway-secret-in-production"
     or GATEWAY_REQUEST_SIGNING_SECRET == "change-this-signing-secret-in-production"
@@ -86,6 +87,10 @@ if IS_PRODUCTION and (
     raise RuntimeError(
         "GATEWAY_SECRET_KEY and GATEWAY_REQUEST_SIGNING_SECRET must be "
         "configured when ENVIRONMENT is production."
+    )
+if IS_PRODUCTION and not GATEWAY_BOOTSTRAP_TOKEN:
+    raise RuntimeError(
+        "GATEWAY_BOOTSTRAP_TOKEN must be configured when ENVIRONMENT is production."
     )
 GATEWAY_JWT_ALGORITHM = os.getenv("GATEWAY_JWT_ALGORITHM", "HS256")
 GATEWAY_JWT_EXPIRES_MINUTES = int(os.getenv("GATEWAY_JWT_EXPIRES_MINUTES", "60"))
@@ -118,6 +123,14 @@ if IS_PRODUCTION and "*" in GATEWAY_ALLOWED_ORIGINS:
 GATEWAY_ALLOWED_IPS = {
     ip.strip() for ip in os.getenv("GATEWAY_ALLOWED_IPS", "").split(",") if ip.strip()
 }
+GATEWAY_TRUST_PROXY_HEADERS = os.getenv(
+    "GATEWAY_TRUST_PROXY_HEADERS", "false"
+).lower() in ("true", "1", "yes")
+GATEWAY_TRUSTED_PROXIES = {
+    ip.strip()
+    for ip in os.getenv("GATEWAY_TRUSTED_PROXIES", "").split(",")
+    if ip.strip()
+}
 GATEWAY_CORS_ALLOW_CREDENTIALS = os.getenv(
     "GATEWAY_CORS_ALLOW_CREDENTIALS", "false"
 ).lower() in ("true", "1", "yes")
@@ -132,6 +145,14 @@ try:
     GATEWAY_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 except OSError:
     pass
+GATEWAY_WEBHOOK_ALLOWED_HOSTS = [
+    host.strip().lower()
+    for host in os.getenv("GATEWAY_WEBHOOK_ALLOWED_HOSTS", "").split(",")
+    if host.strip()
+]
+GATEWAY_WEBHOOK_ALLOW_PRIVATE_NETWORKS = os.getenv(
+    "GATEWAY_WEBHOOK_ALLOW_PRIVATE_NETWORKS", "false"
+).lower() in ("true", "1", "yes")
 GATEWAY_SUPPORTED_FILE_TYPES = {
     ".png",
     ".jpg",

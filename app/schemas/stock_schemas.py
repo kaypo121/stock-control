@@ -102,7 +102,7 @@ class StockTransactionBase(BaseModel):
 
 class StockTransactionCreate(StockTransactionBase):
     transaction_date: Optional[datetime] = Field(
-        default_factory=datetime.now(timezone.utc),
+        default_factory=lambda: datetime.now(timezone.utc),
         description="Date of transaction",
     )
 

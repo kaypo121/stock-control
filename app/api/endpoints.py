@@ -3,6 +3,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
+from app.api.dependencies import require_permissions
 from app.database import get_db
 from app.repositories.stock_repo import StockRepository
 from app.schemas import stock_schemas
@@ -19,6 +20,7 @@ router = APIRouter(prefix="/stock", tags=["Stock Control"])
     "/in",
     response_model=stock_schemas.StockTransactionResponse,
     status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_permissions("stock:write"))],
 )
 def stock_in(
     tx_in: stock_schemas.StockTransactionCreate, db: Session = Depends(get_db)
@@ -45,6 +47,7 @@ def stock_in(
     "/out",
     response_model=stock_schemas.StockTransactionResponse,
     status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_permissions("stock:write"))],
 )
 def stock_out(
     tx_out: stock_schemas.StockTransactionCreate, db: Session = Depends(get_db)
@@ -71,6 +74,7 @@ def stock_out(
     "/adjustment",
     response_model=stock_schemas.StockTransactionResponse,
     status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_permissions("stock:write"))],
 )
 def stock_adjustment(
     adj: stock_schemas.StockAdjustmentCreate, db: Session = Depends(get_db)
@@ -98,7 +102,11 @@ def stock_adjustment(
 # ----------------- Balance Retrieval -----------------
 
 
-@router.get("/current", response_model=List[stock_schemas.StockBalanceResponse])
+@router.get(
+    "/current",
+    response_model=List[stock_schemas.StockBalanceResponse],
+    dependencies=[Depends(require_permissions("stock:read"))],
+)
 def get_all_current_balances(db: Session = Depends(get_db)):
     """Returns all current inventory balances in the system."""
     repo = StockRepository(db)
@@ -108,6 +116,7 @@ def get_all_current_balances(db: Session = Depends(get_db)):
 @router.get(
     "/current/{farmer_id}",
     response_model=List[stock_schemas.StockBalanceResponse],
+    dependencies=[Depends(require_permissions("stock:read"))],
 )
 def get_farmer_balances(farmer_id: int, db: Session = Depends(get_db)):
     """Returns all inventory balances associated with a specific farmer."""
@@ -124,6 +133,7 @@ def get_farmer_balances(farmer_id: int, db: Session = Depends(get_db)):
 @router.get(
     "/current/{farmer_id}/{product_id}",
     response_model=stock_schemas.StockBalanceResponse,
+    dependencies=[Depends(require_permissions("stock:read"))],
 )
 def get_specific_balance(
     farmer_id: int,
@@ -145,6 +155,7 @@ def get_specific_balance(
 @router.get(
     "/transactions",
     response_model=List[stock_schemas.StockTransactionResponse],
+    dependencies=[Depends(require_permissions("stock:read"))],
 )
 def get_transaction_history(
     farmer_id: Optional[int] = Query(None),
@@ -166,14 +177,22 @@ def get_transaction_history(
 # ----------------- Stock Alerts & Reorder Level -----------------
 
 
-@router.get("/alerts", response_model=List[stock_schemas.StockAlertResponse])
+@router.get(
+    "/alerts",
+    response_model=List[stock_schemas.StockAlertResponse],
+    dependencies=[Depends(require_permissions("stock:read"))],
+)
 def get_active_alerts(db: Session = Depends(get_db)):
     """Fetches all active stock alerts (e.g. low-stock or unit-mismatch issues)."""
     repo = StockRepository(db)
     return repo.get_active_alerts()
 
 
-@router.get("/low-stock", response_model=List[stock_schemas.BalanceSummary])
+@router.get(
+    "/low-stock",
+    response_model=List[stock_schemas.BalanceSummary],
+    dependencies=[Depends(require_permissions("stock:read"))],
+)
 def get_low_stock_items(db: Session = Depends(get_db)):
     """Retrieves all product balances that have dropped below or equal to their reorder thresholds."""
     repo = StockRepository(db)
@@ -201,7 +220,11 @@ def get_low_stock_items(db: Session = Depends(get_db)):
 # ----------------- Import pipeline -----------------
 
 
-@router.post("/import", response_model=List[stock_schemas.ImportResult])
+@router.post(
+    "/import",
+    response_model=List[stock_schemas.ImportResult],
+    dependencies=[Depends(require_permissions("stock:write"))],
+)
 def run_import_pipeline(db: Session = Depends(get_db)):
     """
     Scans the raw data folder (`data/raw/`), cleans files,
@@ -227,7 +250,11 @@ def run_import_pipeline(db: Session = Depends(get_db)):
     return results
 
 
-@router.get("/import/logs", response_model=List[stock_schemas.ImportLogResponse])
+@router.get(
+    "/import/logs",
+    response_model=List[stock_schemas.ImportLogResponse],
+    dependencies=[Depends(require_permissions("stock:read"))],
+)
 def get_import_logs(db: Session = Depends(get_db)):
     """Retrieves database records of all import runs."""
     repo = StockRepository(db)
@@ -237,7 +264,10 @@ def get_import_logs(db: Session = Depends(get_db)):
 # ----------------- AI Forecasting Support -----------------
 
 
-@router.get("/forecast/{product_id}")
+@router.get(
+    "/forecast/{product_id}",
+    dependencies=[Depends(require_permissions("stock:read"))],
+)
 def get_product_forecast(product_id: int, db: Session = Depends(get_db)):
     """Generates Weekly/Monthly consumption forecasts and Runout coverage estimates for a product."""
     service = ForecastService(db)
@@ -254,6 +284,7 @@ def get_product_forecast(product_id: int, db: Session = Depends(get_db)):
     "/farmers",
     response_model=stock_schemas.FarmerResponse,
     status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_permissions("stock:write"))],
 )
 def register_farmer(farmer: stock_schemas.FarmerCreate, db: Session = Depends(get_db)):
     repo = StockRepository(db)
@@ -271,7 +302,11 @@ def register_farmer(farmer: stock_schemas.FarmerCreate, db: Session = Depends(ge
     )
 
 
-@router.get("/farmers", response_model=List[stock_schemas.FarmerResponse])
+@router.get(
+    "/farmers",
+    response_model=List[stock_schemas.FarmerResponse],
+    dependencies=[Depends(require_permissions("stock:read"))],
+)
 def list_farmers(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
     repo = StockRepository(db)
     return repo.get_all_farmers(skip=skip, limit=limit)
@@ -281,6 +316,7 @@ def list_farmers(skip: int = 0, limit: int = 100, db: Session = Depends(get_db))
     "/products",
     response_model=stock_schemas.ProductResponse,
     status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_permissions("stock:write"))],
 )
 def register_product(
     product: stock_schemas.ProductCreate, db: Session = Depends(get_db)
@@ -300,7 +336,11 @@ def register_product(
     )
 
 
-@router.get("/products", response_model=List[stock_schemas.ProductResponse])
+@router.get(
+    "/products",
+    response_model=List[stock_schemas.ProductResponse],
+    dependencies=[Depends(require_permissions("stock:read"))],
+)
 def list_products(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
     repo = StockRepository(db)
     return repo.get_all_products(skip=skip, limit=limit)
@@ -310,6 +350,7 @@ def list_products(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)
     "/warehouses",
     response_model=stock_schemas.WarehouseResponse,
     status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_permissions("stock:write"))],
 )
 def register_warehouse(
     wh: stock_schemas.WarehouseCreate, db: Session = Depends(get_db)
@@ -329,7 +370,11 @@ def register_warehouse(
     )
 
 
-@router.get("/warehouses", response_model=List[stock_schemas.WarehouseResponse])
+@router.get(
+    "/warehouses",
+    response_model=List[stock_schemas.WarehouseResponse],
+    dependencies=[Depends(require_permissions("stock:read"))],
+)
 def list_warehouses(db: Session = Depends(get_db)):
     repo = StockRepository(db)
     return repo.get_all_warehouses()

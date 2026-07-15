@@ -104,16 +104,19 @@ class StockTransaction(Base):
         Integer,
         ForeignKey("farmers.farmer_id", ondelete="CASCADE"),
         nullable=False,
+        index=True,
     )
     product_id: Mapped[int] = mapped_column(
         Integer,
         ForeignKey("products.product_id", ondelete="CASCADE"),
         nullable=False,
+        index=True,
     )
     warehouse_id: Mapped[int | None] = mapped_column(
         Integer,
         ForeignKey("warehouses.warehouse_id", ondelete="SET NULL"),
         nullable=True,
+        index=True,
     )
 
     # Transaction types: STOCK_IN, STOCK_OUT, DAMAGE, RETURN, TRANSFER, ADJUSTMENT
@@ -196,16 +199,19 @@ class StockAlert(Base):
         Integer,
         ForeignKey("farmers.farmer_id", ondelete="CASCADE"),
         nullable=True,
+        index=True,
     )
     product_id: Mapped[int] = mapped_column(
         Integer,
         ForeignKey("products.product_id", ondelete="CASCADE"),
         nullable=False,
+        index=True,
     )
     warehouse_id: Mapped[int | None] = mapped_column(
         Integer,
         ForeignKey("warehouses.warehouse_id", ondelete="CASCADE"),
         nullable=True,
+        index=True,
     )
 
     alert_type: Mapped[str] = mapped_column(String, nullable=False)  # e.g., LOW_STOCK, UNIT_MISMATCH

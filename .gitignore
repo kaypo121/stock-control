@@ -164,3 +164,7 @@ data/error_logs/
 *.xlsx
 *.xls
 *.csv
+
+
+#Ignore vscode AI rules
+.github\instructions\codacy.instructions.md

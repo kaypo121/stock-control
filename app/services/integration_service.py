@@ -352,6 +352,29 @@ def _apply_unit_factor(qty: float, raw_unit: str) -> Tuple[float, str]:
     return qty, _normalise_unit(raw_unit)
 
 
+def _year_to_date(value: Any) -> str:
+    if value is None:
+        return "2000-01-01"
+    try:
+        if pd.isna(value):
+            return "2000-01-01"
+    except (TypeError, ValueError):
+        pass
+    try:
+        return f"{int(float(value))}-01-01"
+    except (TypeError, ValueError):
+        return "2000-01-01"
+
+
+def _count_non_numeric(column: Any) -> int:
+    series = column if isinstance(column, pd.Series) else pd.Series(column)
+    count = 0
+    for value in series:
+        if value is not None and _parse_number(value) is None:
+            count += 1
+    return count
+
+
 def _get_or_create_farmer(
     db: Session,
     name: str,
@@ -925,6 +948,12 @@ class DataIntegrationService:
             session.completed_at = datetime.now(timezone.utc)
             self.db.commit()
             raise ValueError(read_error)
+        if df_raw is None:
+            session.status = "FAILED"
+            session.error_summary = "Failed to load dataset from file."
+            session.completed_at = datetime.now(timezone.utc)
+            self.db.commit()
+            raise ValueError("Failed to load dataset from file.")
 
         df = _normalise_headers(df_raw.copy())
         raw_cols = df.columns.tolist()
@@ -946,13 +975,9 @@ class DataIntegrationService:
                 "production_mt",
                 "price",
             ):
-                non_numeric = (
-                    df[col]
-                    .apply(lambda v: v is not None and _parse_number(v) is None)
-                    .sum()
-                )
+                non_numeric = _count_non_numeric(df[col])
                 if non_numeric:
-                    invalid_count += int(non_numeric)
+                    invalid_count += non_numeric
                     sample_issues.append(
                         f"Column '{col}': {non_numeric} non-numeric value(s)"
                     )
@@ -969,7 +994,7 @@ class DataIntegrationService:
 
         analysis = AnalysisSummary(
             file_name=file_path.name,
-            data_source=session.data_source,
+            data_source=session.data_source or "Unknown",
             detected_schema=detected_schema,
             total_rows=total_rows_raw,
             total_columns=total_columns,
@@ -1114,7 +1139,8 @@ class DataIntegrationService:
 
         balance_cache: Dict = {}
 
-        for idx, row in df.iterrows():
+        for _idx, row in df.iterrows():
+            idx = int(_idx)  # type: ignore[arg-type]
             row_dict = row.to_dict()
             try:
                 row_result = self._process_row(
@@ -1318,6 +1344,8 @@ class DataIntegrationService:
             farmers_created,
             farmers_matched,
         )
+        if farmer is None:
+            raise ValueError(f"Could not resolve farmer: {farmer_name!r}")
         product = _get_or_create_product(
             self.db,
             product_name,
@@ -1326,6 +1354,8 @@ class DataIntegrationService:
             products_created,
             products_matched,
         )
+        if product is None:
+            raise ValueError(f"Could not resolve product: {product_name!r}")
 
         warehouse_id = None
         if wh_name:
@@ -1423,9 +1453,7 @@ class DataIntegrationService:
                     )
                 )
             if "year" in df.columns:
-                df["transaction_date"] = df["year"].apply(
-                    lambda y: f"{int(float(y))}-01-01" if y else "2000-01-01"
-                )
+                df["transaction_date"] = df["year"].apply(_year_to_date)
 
         elif schema == "WHOLESALE_PRICES":
             df = df.rename(columns={"commodity": "product_name"})
@@ -1434,9 +1462,7 @@ class DataIntegrationService:
             df["unit"] = "kg"
             df["transaction_type"] = "STOCK_IN"
             if "year" in df.columns:
-                df["transaction_date"] = df["year"].apply(
-                    lambda y: f"{int(float(y))}-01-01" if y else "2000-01-01"
-                )
+                df["transaction_date"] = df["year"].apply(_year_to_date)
             if "price" in df.columns:
                 df["reference_note"] = df["price"].apply(
                     lambda p: f"National wholesale price: GHS {p}"

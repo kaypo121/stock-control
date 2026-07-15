@@ -154,15 +154,20 @@ def _risk(score: float) -> str:
     return RiskLevel.HIGH
 
 
-def _recommendation(score: float, grade: str) -> Tuple[str, str]:
-    """Returns (recommendation, reason)."""
-    # grade may be a GradeClassification enum or plain string — normalise to display value
-    grade_display = grade.value if hasattr(grade, "value") else str(grade)
+def _grade_display(grade: str | GradeClassification) -> str:
+    if isinstance(grade, GradeClassification):
+        return grade.value
+    return grade
 
-    if score >= 70 and grade not in (
-        GradeClassification.GRADE_C,
-        GradeClassification.REJECT,
-    ):
+
+def _recommendation(
+    score: float, grade: str | GradeClassification
+) -> Tuple[str, str]:
+    """Returns (recommendation, reason)."""
+    grade_display = _grade_display(grade)
+    reject_grades = {GradeClassification.GRADE_C.value, GradeClassification.REJECT.value}
+
+    if score >= 70 and grade_display not in reject_grades:
         rec = PurchaseRecommendation.BUY
         reason = (
             f"Product achieved a quality score of {score:.1f}/100 and is graded {grade_display}. "
@@ -566,12 +571,26 @@ class QualityAssessmentService:
 
         # ── 1. Score ──────────────────────────────────────────────────────────
         if cat in ("Crop", "Fruit", "Vegetable"):
+            if request.produce_attributes is None:
+                raise ValueError(
+                    "produce_attributes is required for Crop, Fruit, and Vegetable categories."
+                )
             result = score_produce(request.produce_attributes, name, cat)
         elif cat == "Livestock":
+            if request.livestock_attributes is None:
+                raise ValueError(
+                    "livestock_attributes is required for Livestock category."
+                )
             result = score_livestock(request.livestock_attributes, name)
         elif cat == "Poultry":
+            if request.poultry_attributes is None:
+                raise ValueError(
+                    "poultry_attributes is required for Poultry category."
+                )
             result = score_poultry(request.poultry_attributes, name)
         elif cat == "Fish":
+            if request.fish_attributes is None:
+                raise ValueError("fish_attributes is required for Fish category.")
             result = score_fish(request.fish_attributes, name)
         else:
             # Generic fallback
@@ -619,6 +638,10 @@ class QualityAssessmentService:
         # ── 5. Persist category detail ────────────────────────────────────────
         if cat in ("Crop", "Fruit", "Vegetable"):
             a = request.produce_attributes
+            if a is None:
+                raise ValueError(
+                    "produce_attributes is required for Crop, Fruit, and Vegetable categories."
+                )
             detail = ProduceQualityDetail(
                 assessment_id=assessment.assessment_id,
                 weight_kg=a.weight_kg,
@@ -641,6 +664,10 @@ class QualityAssessmentService:
 
         elif cat == "Livestock":
             a = request.livestock_attributes
+            if a is None:
+                raise ValueError(
+                    "livestock_attributes is required for Livestock category."
+                )
             detail = LivestockQualityDetail(
                 assessment_id=assessment.assessment_id,
                 species=a.species,
@@ -661,6 +688,10 @@ class QualityAssessmentService:
 
         elif cat == "Poultry":
             a = request.poultry_attributes
+            if a is None:
+                raise ValueError(
+                    "poultry_attributes is required for Poultry category."
+                )
             detail = PoultryQualityDetail(
                 assessment_id=assessment.assessment_id,
                 species=a.species,
@@ -678,6 +709,8 @@ class QualityAssessmentService:
 
         elif cat == "Fish":
             a = request.fish_attributes
+            if a is None:
+                raise ValueError("fish_attributes is required for Fish category.")
             detail = FishQualityDetail(
                 assessment_id=assessment.assessment_id,
                 species=a.species,

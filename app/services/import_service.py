@@ -210,6 +210,7 @@ class ImportService:
     def import_dataset(self, file_path: Path) -> Dict[str, Any]:
         """Reads, normalizes, cleans, and imports a dataset from CSV or Excel."""
         file_name = file_path.name
+        log_name = ""
 
         # 1. Read file
         try:
@@ -251,7 +252,8 @@ class ImportService:
         records_failed = 0
         error_rows = []
 
-        for idx, row in df.iterrows():
+        for _idx, row in df.iterrows():
+            idx = int(_idx)  # type: ignore[arg-type]  # pandas Hashable -> int
             row_dict = row.to_dict()
 
             # Map columns for historical datasets to make them importable as transaction flows

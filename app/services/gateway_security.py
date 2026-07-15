@@ -338,54 +338,108 @@ class GatewaySecurityService:
             "role": principal.role,
         }
 
-    def authenticate_request(
-        self, db: Session, request: Request
-    ) -> Optional[Dict[str, Any]]:
-        auth_header = request.headers.get("Authorization", "")
-        api_key_header = request.headers.get("X-API-Key")
-        service_token = request.headers.get("X-Service-Token")
-        machine_token = request.headers.get("X-Machine-Token")
+    def _build_identity_from_token(
+        self, db: Session, bearer_token: str
+    ) -> Dict[str, Any]:
+        try:
+            payload = jwt.decode(
+                bearer_token,
+                GATEWAY_SECRET_KEY,
+                algorithms=[GATEWAY_JWT_ALGORITHM],
+                leeway=30,
+                options={"verify_iat": False},
+            )
+        except jwt.InvalidTokenError as exc:
+            raise GatewayAPIError(
+                status.HTTP_401_UNAUTHORIZED,
+                "INVALID_TOKEN",
+                "Bearer token is invalid or expired.",
+                str(exc),
+            ) from exc
 
+        principal = (
+            db.query(GatewayPrincipal)
+            .filter(GatewayPrincipal.principal_id == payload["sub"])
+            .first()
+        )
+        if not principal or not principal.is_active:
+            raise GatewayAPIError(
+                status.HTTP_401_UNAUTHORIZED,
+                "INVALID_TOKEN",
+                "Token principal is inactive.",
+            )
+
+        identity = {
+            "principal": principal,
+            "permissions": payload.get("permissions", []),
+            "role": payload.get("role"),
+            "credential_type": "JWT",
+            "scopes": payload.get("permissions", []),
+        }
+        principal.last_authenticated_at = utcnow()
+        db.commit()
+        return identity
+
+    def _build_identity_from_api_key(
+        self,
+        db: Session,
+        raw_secret: str,
+        credential_type: str,
+    ) -> Dict[str, Any]:
+        key_prefix = raw_secret[:16]
+        candidates = (
+            db.query(GatewayApiKey)
+            .filter(
+                GatewayApiKey.key_prefix == key_prefix,
+                GatewayApiKey.is_active.is_(True),
+                GatewayApiKey.credential_type == credential_type,
+            )
+            .all()
+        )
+        for candidate in candidates:
+            if candidate.expires_at and candidate.expires_at < utcnow():
+                continue
+            if verify_secret(raw_secret, candidate.hashed_key):
+                principal = (
+                    db.query(GatewayPrincipal)
+                    .filter(GatewayPrincipal.id == candidate.principal_id)
+                    .first()
+                )
+                if not principal or not principal.is_active:
+                    raise GatewayAPIError(
+                        status.HTTP_401_UNAUTHORIZED,
+                        "INVALID_CREDENTIAL",
+                        "Associated principal is inactive.",
+                    )
+                candidate.last_used_at = utcnow()
+                principal.last_authenticated_at = utcnow()
+                db.commit()
+                return {
+                    "principal": principal,
+                    "permissions": build_permission_list(
+                        principal, _json_loads(candidate.scopes_json, [])
+                    ),
+                    "role": principal.role,
+                    "credential_type": credential_type,
+                    "scopes": _json_loads(candidate.scopes_json, []),
+                }
+        raise GatewayAPIError(
+            status.HTTP_401_UNAUTHORIZED,
+            "INVALID_CREDENTIAL",
+            "API credential is invalid or expired.",
+        )
+
+    def _authenticate_headers(
+        self,
+        db: Session,
+        auth_header: str,
+        api_key_header: Optional[str],
+        service_token: Optional[str],
+        machine_token: Optional[str],
+    ) -> Optional[Dict[str, Any]]:
         if auth_header.startswith("Bearer "):
             bearer_token = auth_header.split(" ", 1)[1].strip()
-            try:
-                payload = jwt.decode(
-                    bearer_token,
-                    GATEWAY_SECRET_KEY,
-                    algorithms=[GATEWAY_JWT_ALGORITHM],
-                    leeway=30,
-                    options={"verify_iat": False},
-                )
-            except jwt.InvalidTokenError as exc:
-                raise GatewayAPIError(
-                    status.HTTP_401_UNAUTHORIZED,
-                    "INVALID_TOKEN",
-                    "Bearer token is invalid or expired.",
-                    str(exc),
-                )
-
-            principal = (
-                db.query(GatewayPrincipal)
-                .filter(GatewayPrincipal.principal_id == payload["sub"])
-                .first()
-            )
-            if not principal or not principal.is_active:
-                raise GatewayAPIError(
-                    status.HTTP_401_UNAUTHORIZED,
-                    "INVALID_TOKEN",
-                    "Token principal is inactive.",
-                )
-
-            identity = {
-                "principal": principal,
-                "permissions": payload.get("permissions", []),
-                "role": payload.get("role"),
-                "credential_type": "JWT",
-                "scopes": payload.get("permissions", []),
-            }
-            principal.last_authenticated_at = utcnow()
-            db.commit()
-            return identity
+            return self._build_identity_from_token(db, bearer_token)
 
         raw_secret = api_key_header or service_token or machine_token
         if raw_secret:
@@ -394,51 +448,33 @@ class GatewaySecurityService:
                 credential_type = "SERVICE_TOKEN"
             if machine_token:
                 credential_type = "MACHINE_TOKEN"
-
-            key_prefix = raw_secret[:16]
-            candidates = (
-                db.query(GatewayApiKey)
-                .filter(
-                    GatewayApiKey.key_prefix == key_prefix,
-                    GatewayApiKey.is_active.is_(True),
-                    GatewayApiKey.credential_type == credential_type,
-                )
-                .all()
-            )
-            for candidate in candidates:
-                if candidate.expires_at and candidate.expires_at < utcnow():
-                    continue
-                if verify_secret(raw_secret, candidate.hashed_key):
-                    principal = (
-                        db.query(GatewayPrincipal)
-                        .filter(GatewayPrincipal.id == candidate.principal_id)
-                        .first()
-                    )
-                    if not principal or not principal.is_active:
-                        raise GatewayAPIError(
-                            status.HTTP_401_UNAUTHORIZED,
-                            "INVALID_CREDENTIAL",
-                            "Associated principal is inactive.",
-                        )
-                    candidate.last_used_at = utcnow()
-                    principal.last_authenticated_at = utcnow()
-                    db.commit()
-                    return {
-                        "principal": principal,
-                        "permissions": build_permission_list(
-                            principal, _json_loads(candidate.scopes_json, [])
-                        ),
-                        "role": principal.role,
-                        "credential_type": credential_type,
-                        "scopes": _json_loads(candidate.scopes_json, []),
-                    }
-            raise GatewayAPIError(
-                status.HTTP_401_UNAUTHORIZED,
-                "INVALID_CREDENTIAL",
-                "API credential is invalid or expired.",
-            )
+            return self._build_identity_from_api_key(db, raw_secret, credential_type)
 
         return None
+
+    def authenticate_request(
+        self, db: Session, request: Request
+    ) -> Optional[Dict[str, Any]]:
+        return self._authenticate_headers(
+            db=db,
+            auth_header=request.headers.get("Authorization", ""),
+            api_key_header=request.headers.get("X-API-Key"),
+            service_token=request.headers.get("X-Service-Token"),
+            machine_token=request.headers.get("X-Machine-Token"),
+        )
+
+    def authenticate_websocket(
+        self,
+        db: Session,
+        websocket: Any,
+    ) -> Optional[Dict[str, Any]]:
+        return self._authenticate_headers(
+            db=db,
+            auth_header=websocket.headers.get("Authorization", ""),
+            api_key_header=websocket.headers.get("X-API-Key"),
+            service_token=websocket.headers.get("X-Service-Token"),
+            machine_token=websocket.headers.get("X-Machine-Token"),
+        )
 
     def require_permissions(
         self,
@@ -490,29 +526,41 @@ class GatewaySecurityService:
         signature = request.headers.get("X-Signature")
         nonce = request.headers.get("X-Nonce")
         timestamp = request.headers.get("X-Timestamp")
+
+        # If none of the signing headers are present, this is an unsigned request — skip
         if not any([signature, nonce, timestamp]):
             return
+
+        # If some but not all headers are present, the signature is incomplete
         if not all([signature, nonce, timestamp]):
             raise GatewayAPIError(
                 status.HTTP_400_BAD_REQUEST,
                 "INVALID_SIGNATURE",
                 "Signature headers are incomplete.",
             )
+
+        # All three are guaranteed non-None at this point — narrow to str
+        signature_str: str = str(signature)
+        nonce_str: str = str(nonce)
+        timestamp_str: str = str(timestamp)
+
         try:
-            timestamp_value = int(timestamp)
+            timestamp_value = int(timestamp_str)
         except ValueError as exc:
             raise GatewayAPIError(
                 status.HTTP_400_BAD_REQUEST,
                 "INVALID_SIGNATURE",
                 "Timestamp must be a UNIX epoch integer.",
                 str(exc),
-            )
+            ) from exc
+
         if abs(int(datetime.now(timezone.utc).timestamp()) - timestamp_value) > 300:
             raise GatewayAPIError(
                 status.HTTP_401_UNAUTHORIZED,
                 "SIGNATURE_EXPIRED",
                 "Signed request timestamp is outside the accepted window.",
             )
+
         if not identity:
             raise GatewayAPIError(
                 status.HTTP_401_UNAUTHORIZED,
@@ -520,13 +568,13 @@ class GatewaySecurityService:
                 "Signed requests still require authentication.",
             )
 
-        signing_input = f"{timestamp}.{nonce}.".encode("utf-8") + body
+        signing_input = f"{timestamp_str}.{nonce_str}.".encode("utf-8") + body
         expected = hmac.new(
             GATEWAY_REQUEST_SIGNING_SECRET.encode("utf-8"),
             signing_input,
             hashlib.sha256,
         ).hexdigest()
-        if not hmac.compare_digest(expected, signature):
+        if not hmac.compare_digest(expected, signature_str):
             raise GatewayAPIError(
                 status.HTTP_401_UNAUTHORIZED,
                 "INVALID_SIGNATURE",
@@ -534,7 +582,7 @@ class GatewaySecurityService:
             )
 
         principal = identity["principal"]
-        existing = db.query(GatewayNonce).filter(GatewayNonce.nonce == nonce).first()
+        existing = db.query(GatewayNonce).filter(GatewayNonce.nonce == nonce_str).first()
         if existing:
             raise GatewayAPIError(
                 status.HTTP_409_CONFLICT,
@@ -543,9 +591,9 @@ class GatewaySecurityService:
             )
         db.add(
             GatewayNonce(
-                nonce=nonce,
+                nonce=nonce_str,
                 principal_id=principal.id,
-                request_signature=signature,
+                request_signature=signature_str,
                 expires_at=utcnow() + timedelta(minutes=5),
             )
         )

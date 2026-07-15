@@ -4,7 +4,11 @@ import uuid
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from app.config import GATEWAY_ALLOWED_IPS
+from app.config import (
+    GATEWAY_ALLOWED_IPS,
+    GATEWAY_TRUST_PROXY_HEADERS,
+    GATEWAY_TRUSTED_PROXIES,
+)
 
 
 class RequestContextMiddleware(BaseHTTPMiddleware):
@@ -31,11 +35,14 @@ class IPAllowListMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
         if not GATEWAY_ALLOWED_IPS or not request.url.path.startswith("/v1"):
             return await call_next(request)
-        forwarded_for = request.headers.get("X-Forwarded-For", "")
-        forwarded_ip = forwarded_for.split(",")[0].strip() if forwarded_for else None
-        client_ip = forwarded_ip or (
-            request.client.host if request.client else "unknown"
-        )
+        direct_client_ip = request.client.host if request.client else "unknown"
+        forwarded_ip = None
+        if GATEWAY_TRUST_PROXY_HEADERS:
+            if not GATEWAY_TRUSTED_PROXIES or direct_client_ip in GATEWAY_TRUSTED_PROXIES:
+                forwarded_for = request.headers.get("X-Forwarded-For", "")
+                if forwarded_for:
+                    forwarded_ip = forwarded_for.split(",")[0].strip()
+        client_ip = forwarded_ip or direct_client_ip
         if client_ip in GATEWAY_ALLOWED_IPS:
             return await call_next(request)
         return JSONResponse(
@@ -75,6 +82,11 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             "geolocation=(), microphone=(), camera=()"
         )
         response.headers["Content-Security-Policy"] = (
-            "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline';"
+            "default-src 'self'; "
+            "script-src 'self' 'unsafe-inline'; "
+            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+            "font-src 'self' https://fonts.gstatic.com; "
+            "img-src 'self' data:; "
+            "connect-src 'self';"
         )
         return response
