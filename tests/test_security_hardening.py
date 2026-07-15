@@ -1,6 +1,37 @@
 from io import BytesIO
 
 from app.api.integration_endpoints import _build_upload_path
+from app.middleware.gateway_middleware import _content_security_policy_for
+
+
+def test_docs_csp_allows_swagger_ui_assets():
+    csp = _content_security_policy_for("/docs")
+
+    assert "https://cdn.jsdelivr.net" in csp
+    assert "https://fastapi.tiangolo.com" in csp
+
+
+def test_default_csp_keeps_strict_directives():
+    csp = _content_security_policy_for("/v1/health")
+
+    assert "https://cdn.jsdelivr.net" not in csp
+    assert "https://fastapi.tiangolo.com" not in csp
+
+
+def test_docs_response_includes_swagger_csp(client):
+    response = client.get("/docs")
+
+    assert response.status_code == 200
+    csp = response.headers.get("Content-Security-Policy", "")
+    assert "https://cdn.jsdelivr.net" in csp
+    assert "https://fastapi.tiangolo.com" in csp
+
+
+def test_api_response_keeps_strict_csp(client):
+    response = client.get("/health")
+
+    csp = response.headers.get("Content-Security-Policy", "")
+    assert "https://cdn.jsdelivr.net" not in csp
 
 
 def _issue_token_for_principal(client, principal_id, client_secret):
