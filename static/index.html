@@ -568,9 +568,114 @@
     #main { margin-left: 70px; }
     .two-col, .three-col, .form-grid { grid-template-columns: 1fr; }
   }
+
+  /* ── AUTH OVERLAY ─────────────────────────────────────────────── */
+  #auth-overlay {
+    position: fixed; inset: 0; z-index: 1000;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(3, 15, 7, 0.92); backdrop-filter: blur(6px);
+  }
+  #auth-overlay.hidden { display: none; }
+  .auth-card {
+    width: min(420px, 92vw); background: var(--bg-card);
+    border-radius: var(--radius-lg); box-shadow: var(--shadow-lg);
+    padding: 32px 28px; border: 1px solid var(--border);
+  }
+  .auth-card h2 {
+    font-size: 1.35rem; margin-bottom: 6px; color: var(--text-main);
+  }
+  .auth-card p {
+    font-size: 0.85rem; color: var(--text-muted); margin-bottom: 22px;
+  }
+  .auth-tabs {
+    display: flex; gap: 8px; margin-bottom: 20px;
+  }
+  .auth-tab {
+    flex: 1; padding: 8px; border: 1px solid var(--border);
+    border-radius: var(--radius-sm); background: var(--bg-main);
+    font-size: 0.82rem; font-weight: 600; cursor: pointer;
+    color: var(--text-muted); transition: var(--transition);
+  }
+  .auth-tab.active {
+    background: var(--primary-light); color: var(--primary);
+    border-color: var(--primary);
+  }
+  .auth-panel { display: none; }
+  .auth-panel.active { display: block; }
+  .auth-field { margin-bottom: 14px; }
+  .auth-field label {
+    display: block; font-size: 0.78rem; font-weight: 600;
+    color: var(--text-muted); margin-bottom: 5px;
+  }
+  .auth-field input {
+    width: 100%; padding: 10px 12px; border: 1px solid var(--border);
+    border-radius: var(--radius-sm); font-size: 0.88rem;
+    font-family: inherit; background: var(--bg-main);
+  }
+  .auth-field input:focus {
+    outline: none; border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(5, 150, 105, 0.12);
+  }
+  .auth-remember {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 0.8rem; color: var(--text-muted); margin: 12px 0 18px;
+  }
+  .auth-submit {
+    width: 100%; padding: 11px; border: none;
+    border-radius: var(--radius-sm); background: var(--primary);
+    color: #fff; font-weight: 600; font-size: 0.9rem;
+    cursor: pointer; transition: var(--transition);
+  }
+  .auth-submit:hover { background: var(--primary-hover); }
+  .auth-submit:disabled { opacity: 0.6; cursor: not-allowed; }
+  #auth-error { margin-top: 14px; }
+  .btn-logout {
+    padding: 6px 12px; border: 1px solid var(--border);
+    border-radius: var(--radius-sm); background: var(--bg-card);
+    font-size: 0.78rem; font-weight: 600; color: var(--text-muted);
+    cursor: pointer; transition: var(--transition);
+  }
+  .btn-logout:hover { border-color: var(--danger); color: var(--danger); }
 </style>
 </head>
 <body>
+
+<!-- ════════════════════════════════ AUTH GATE ══════════════════════════════ -->
+<div id="auth-overlay">
+  <div class="auth-card">
+    <h2>Sign in to AgriStock</h2>
+    <p>API access requires gateway credentials. Use a principal client secret or API key.</p>
+    <div class="auth-tabs">
+      <button type="button" class="auth-tab active" data-tab="credentials">Client Secret</button>
+      <button type="button" class="auth-tab" data-tab="apikey">API Key</button>
+    </div>
+    <form id="auth-form-credentials" class="auth-panel active" onsubmit="submitCredentialsLogin(event)">
+      <div class="auth-field">
+        <label for="auth-principal-id">Principal ID</label>
+        <input id="auth-principal-id" type="text" autocomplete="username" required placeholder="agw_principal_…"/>
+      </div>
+      <div class="auth-field">
+        <label for="auth-client-secret">Client Secret</label>
+        <input id="auth-client-secret" type="password" autocomplete="current-password" required placeholder="agw_client_…"/>
+      </div>
+      <label class="auth-remember">
+        <input id="auth-remember-credentials" type="checkbox"/> Remember on this device
+      </label>
+      <button class="auth-submit" type="submit">Sign in</button>
+    </form>
+    <form id="auth-form-apikey" class="auth-panel" onsubmit="submitApiKeyLogin(event)">
+      <div class="auth-field">
+        <label for="auth-api-key">API Key</label>
+        <input id="auth-api-key" type="password" autocomplete="off" required placeholder="agw_key_…"/>
+      </div>
+      <label class="auth-remember">
+        <input id="auth-remember-apikey" type="checkbox"/> Remember on this device
+      </label>
+      <button class="auth-submit" type="submit">Sign in</button>
+    </form>
+    <div id="auth-error"></div>
+  </div>
+</div>
 
 <!-- ════════════════════════════════ SIDEBAR ════════════════════════════════ -->
 <aside id="sidebar">
@@ -645,6 +750,8 @@
     <h2 id="page-title">Dashboard</h2>
     <div class="topbar-right">
       <span class="badge-live">Live</span>
+      <span id="auth-user" style="font-size:0.78rem;color:var(--text-muted);font-weight:500"></span>
+      <button type="button" class="btn-logout" onclick="logout()" title="Sign out">Sign out</button>
       <a id="api-link" href="/docs" target="_blank">Interactive API Docs</a>
     </div>
   </div>
@@ -1046,6 +1153,203 @@
 
 <script>
 const API = '';   // same origin
+const AUTH_STORAGE_KEY = 'agw_auth';
+let authState = null;
+let refreshPromise = null;
+
+// ── Auth helpers ─────────────────────────────────────────────────────────────
+function authStorage(persistent) {
+  return persistent ? localStorage : sessionStorage;
+}
+
+function loadStoredAuth() {
+  const raw = localStorage.getItem(AUTH_STORAGE_KEY) || sessionStorage.getItem(AUTH_STORAGE_KEY);
+  if (!raw) return null;
+  try { return JSON.parse(raw); } catch { return null; }
+}
+
+function saveAuth(state, persistent) {
+  authState = state;
+  localStorage.removeItem(AUTH_STORAGE_KEY);
+  sessionStorage.removeItem(AUTH_STORAGE_KEY);
+  authStorage(persistent).setItem(AUTH_STORAGE_KEY, JSON.stringify(state));
+  updateAuthUi();
+}
+
+function clearAuth() {
+  authState = null;
+  localStorage.removeItem(AUTH_STORAGE_KEY);
+  sessionStorage.removeItem(AUTH_STORAGE_KEY);
+  updateAuthUi();
+}
+
+function showAuthOverlay(message) {
+  const overlay = document.getElementById('auth-overlay');
+  overlay.classList.remove('hidden');
+  const err = document.getElementById('auth-error');
+  err.innerHTML = message
+    ? `<div class="alert alert-error">❌ ${message}</div>`
+    : '';
+}
+
+function hideAuthOverlay() {
+  document.getElementById('auth-overlay').classList.add('hidden');
+  document.getElementById('auth-error').innerHTML = '';
+}
+
+function updateAuthUi() {
+  const label = document.getElementById('auth-user');
+  if (!label) return;
+  if (!authState) {
+    label.textContent = '';
+    return;
+  }
+  const role = authState.role ? ` (${authState.role})` : '';
+  label.textContent = authState.mode === 'api_key'
+    ? `API key${role}`
+    : `${authState.principalId || 'Signed in'}${role}`;
+}
+
+function buildAuthHeaders() {
+  if (!authState) return {};
+  if (authState.mode === 'api_key') {
+    return { 'X-API-Key': authState.apiKey };
+  }
+  if (authState.accessToken) {
+    return { 'Authorization': `Bearer ${authState.accessToken}` };
+  }
+  return {};
+}
+
+function formatApiError(err) {
+  if (!err) return 'Request failed';
+  if (typeof err === 'string') return err;
+  if (err.detail) return typeof err.detail === 'string' ? err.detail : JSON.stringify(err.detail);
+  if (Array.isArray(err.errors) && err.errors[0]?.message) return err.errors[0].message;
+  if (err.message) return err.message;
+  return JSON.stringify(err);
+}
+
+async function issueToken(principalId, clientSecret) {
+  const r = await fetch(API + '/v1/auth/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      principalId,
+      clientSecret,
+      grantType: 'client_credentials',
+    }),
+  });
+  const body = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(formatApiError(body));
+  const data = body.data || body;
+  return {
+    mode: 'jwt',
+    accessToken: data.accessToken,
+    expiresAt: Date.now() + ((data.expiresIn || 3600) * 1000),
+    principalId,
+    clientSecret,
+    role: data.role || '',
+  };
+}
+
+async function ensureValidToken() {
+  if (!authState) return false;
+  if (authState.mode === 'api_key') return true;
+  if (!authState.expiresAt || Date.now() < authState.expiresAt - 120000) return true;
+  if (!authState.principalId || !authState.clientSecret) return false;
+  if (!refreshPromise) {
+    refreshPromise = issueToken(authState.principalId, authState.clientSecret)
+      .then((next) => {
+        const persistent = !!localStorage.getItem(AUTH_STORAGE_KEY);
+        saveAuth({ ...authState, ...next }, persistent);
+        return true;
+      })
+      .catch(() => {
+        clearAuth();
+        showAuthOverlay('Session expired. Sign in again.');
+        return false;
+      })
+      .finally(() => { refreshPromise = null; });
+  }
+  return refreshPromise;
+}
+
+async function ensureAuth() {
+  authState = loadStoredAuth();
+  updateAuthUi();
+  if (!authState) {
+    showAuthOverlay();
+    return false;
+  }
+  if (authState.mode === 'jwt') {
+    const ok = await ensureValidToken();
+    if (!ok) return false;
+  }
+  hideAuthOverlay();
+  return true;
+}
+
+function initAuthTabs() {
+  document.querySelectorAll('.auth-tab').forEach((tab) => {
+    tab.addEventListener('click', () => {
+      const target = tab.dataset.tab;
+      document.querySelectorAll('.auth-tab').forEach((t) => t.classList.toggle('active', t.dataset.tab === target));
+      document.querySelectorAll('.auth-panel').forEach((panel) => {
+        panel.classList.toggle('active', panel.id === `auth-form-${target}`);
+      });
+      document.getElementById('auth-error').innerHTML = '';
+    });
+  });
+}
+
+async function submitCredentialsLogin(event) {
+  event.preventDefault();
+  const btn = event.target.querySelector('.auth-submit');
+  const principalId = document.getElementById('auth-principal-id').value.trim();
+  const clientSecret = document.getElementById('auth-client-secret').value.trim();
+  const remember = document.getElementById('auth-remember-credentials').checked;
+  btn.disabled = true;
+  document.getElementById('auth-error').innerHTML = '';
+  try {
+    const state = await issueToken(principalId, clientSecret);
+    saveAuth(state, remember);
+    hideAuthOverlay();
+    loadDashboard();
+  } catch (err) {
+    document.getElementById('auth-error').innerHTML =
+      `<div class="alert alert-error">❌ ${formatApiError(err)}</div>`;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function submitApiKeyLogin(event) {
+  event.preventDefault();
+  const btn = event.target.querySelector('.auth-submit');
+  const apiKey = document.getElementById('auth-api-key').value.trim();
+  const remember = document.getElementById('auth-remember-apikey').checked;
+  btn.disabled = true;
+  document.getElementById('auth-error').innerHTML = '';
+  try {
+    const probe = await fetch(API + '/integration/health', { headers: { 'X-API-Key': apiKey } });
+    const body = await probe.json().catch(() => ({}));
+    if (!probe.ok) throw new Error(formatApiError(body));
+    saveAuth({ mode: 'api_key', apiKey }, remember);
+    hideAuthOverlay();
+    loadDashboard();
+  } catch (err) {
+    document.getElementById('auth-error').innerHTML =
+      `<div class="alert alert-error">❌ ${formatApiError(err)}</div>`;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function logout() {
+  clearAuth();
+  showAuthOverlay();
+}
 
 // ── Navigation ───────────────────────────────────────────────────────────────
 const PAGE_TITLES = {
@@ -1067,8 +1371,21 @@ function showPage(id) {
 
 // ── Fetch helper ─────────────────────────────────────────────────────────────
 async function api(path, opts={}) {
-  const r = await fetch(API + path, opts);
-  if (!r.ok) { const e = await r.json().catch(()=>({detail:r.statusText})); throw e; }
+  const authed = await ensureAuth();
+  if (!authed) throw new Error('Authentication required');
+  await ensureValidToken();
+  const headers = { ...buildAuthHeaders(), ...(opts.headers || {}) };
+  const r = await fetch(API + path, { ...opts, headers });
+  if (r.status === 401) {
+    clearAuth();
+    showAuthOverlay('Authentication expired or invalid. Sign in again.');
+    const e = await r.json().catch(() => ({ message: r.statusText }));
+    throw e;
+  }
+  if (!r.ok) {
+    const e = await r.json().catch(() => ({ message: r.statusText }));
+    throw e;
+  }
   return r.json();
 }
 
@@ -1492,7 +1809,18 @@ async function processUpload(file) {
   const fd = new FormData();
   fd.append('file', file);
   try {
-    const data = await fetch(API + '/integration/upload', { method:'POST', body: fd }).then(async r => {
+    const authed = await ensureAuth();
+    if (!authed) throw new Error('Authentication required');
+    await ensureValidToken();
+    const data = await fetch(API + '/integration/upload', {
+      method: 'POST',
+      headers: buildAuthHeaders(),
+      body: fd,
+    }).then(async r => {
+      if (r.status === 401) {
+        clearAuth();
+        showAuthOverlay('Authentication expired or invalid. Sign in again.');
+      }
       if (!r.ok) { const e = await r.json(); throw e; }
       return r.json();
     });
@@ -1624,7 +1952,8 @@ const pageLoaders = {
 };
 
 // ── Boot ─────────────────────────────────────────────────────────────────────
-loadDashboard();
+initAuthTabs();
+ensureAuth().then((ok) => { if (ok) loadDashboard(); });
 </script>
 </body>
 </html>
