@@ -242,3 +242,33 @@ def test_invalid_and_duplicate_file_import(db_session):
         product = repo.get_product_by_name("Cassava")
         balance = repo.get_balance(farmer.farmer_id, product.product_id, None)
         assert balance.current_stock == 100.0
+
+
+def test_compute_inventory_stats_handles_naive_transaction_dates(db_session):
+    """Postgres/SQLite migrations may store naive datetimes; stats must not crash."""
+    from datetime import datetime, timedelta
+
+    from app.models.stock_models import Farmer, Product, StockTransaction
+    from app.services.integration_service import _compute_inventory_stats
+
+    farmer = Farmer(full_name="Test Farmer", region="Ashanti", district="Kumasi")
+    product = Product(product_name="Tomato", category="Vegetables", unit="crate")
+    db_session.add_all([farmer, product])
+    db_session.flush()
+
+    naive_date = datetime(2026, 6, 1, 12, 0, 0)
+    db_session.add(
+        StockTransaction(
+            farmer_id=farmer.farmer_id,
+            product_id=product.product_id,
+            transaction_type="STOCK_OUT",
+            quantity=10.0,
+            unit="crate",
+            transaction_date=naive_date,
+        )
+    )
+    db_session.commit()
+
+    stats = _compute_inventory_stats(db_session)
+    tomato = next(s for s in stats if s.product_name == "Tomato")
+    assert tomato.stock_turnover_rate >= 0

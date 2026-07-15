@@ -287,6 +287,13 @@ def _parse_number(val: Any) -> Optional[float]:
         return None
 
 
+def _ensure_utc(dt: datetime) -> datetime:
+    """Normalize DB datetimes for safe comparison (SQLite/Postgres may be naive)."""
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
 def _parse_date(val: Any) -> Optional[datetime]:
     if val is None:
         return None
@@ -576,7 +583,7 @@ def _compute_inventory_stats(db: Session) -> List[InventoryStats]:
             t.quantity
             for t in txs
             if t.transaction_type in ("STOCK_OUT", "TRANSFER")
-            and t.transaction_date >= ninety_days_ago
+            and _ensure_utc(t.transaction_date) >= ninety_days_ago
         )
         avg_stock = max(current_stock, 1.0)
         turnover_rate = round(recent_out / avg_stock, 4)
